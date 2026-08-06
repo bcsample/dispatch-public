@@ -9,12 +9,20 @@ network.
 
 - **Aggregates news** from free Google News RSS search + curated topic feeds
   (breaking, world, business, tech, ...), with an optional NewsAPI.ai key for
-  extra sources if you want them.
-- **Tracks world events** — earthquakes, wildfires, sanctions list changes,
-  known-exploited-vulnerability disclosures — as a live "what changed"
-  ticker, not just a headline list.
-- **Shows nearby aircraft** in real time via the free adsb.fi API, no signup
-  required (optional OpenSky credentials for a higher rate limit).
+  extra sources if you want them. Headlines are automatically clustered —
+  the same story from five outlets collapses into one line with a source
+  count, not five near-duplicate entries.
+- **Detects convergence** — when a place suddenly has multiple stories,
+  a coverage spike, *and* it matches something you care about all at once,
+  it surfaces as a distinct "BREAKING" event on the ticker, not just another
+  headline in the pile.
+- **Tracks world events on a live map** — earthquakes, wildfires, sanctions
+  list changes, known-exploited-vulnerability disclosures — click any dot
+  for the full story. A "what changed since you last looked" ticker, not
+  just a static headline list.
+- **Shows nearby aircraft in real time** via the free adsb.fi API, no signup
+  required (optional OpenSky credentials for a higher rate limit) — flight
+  number, route, and altitude, updating live on its own radar-style map.
 - **Speaks a scheduled voice bulletin** (local neural TTS, nothing sent to
   any cloud) at the top and bottom of every hour, or on demand via a button
   on the board — respecting quiet hours, meetings (mic-in-use detection),
