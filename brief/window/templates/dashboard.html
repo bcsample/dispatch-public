@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Dispatch — World News Terminal</title>
+<style>
+  /* JetBrains Mono — vendored (static/fonts/, OFL license alongside), no CDN.
+     The board's data voice: every timestamp, stat, and ticker tag. */
+  @font-face {
+    font-family: "JetBrains Mono";
+    src: url("/static/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+    font-weight: 400; font-style: normal; font-display: swap;
+  }
+  @font-face {
+    font-family: "JetBrains Mono";
+    src: url("/static/fonts/JetBrainsMono-Medium.woff2") format("woff2");
+    font-weight: 500; font-style: normal; font-display: swap;
+  }
+  @font-face {
+    font-family: "JetBrains Mono";
+    src: url("/static/fonts/JetBrainsMono-Bold.woff2") format("woff2");
+    font-weight: 700; font-style: normal; font-display: swap;
+  }
+  :root {
+    --bg: #0b0e14; --panel: #131722; --line: #262c3a; --text: #e6e9f0;
+    --dim: #8891a6; --green: #3ecf6e; --yellow: #e0b23e; --red: #e6544c;
+    --accent: #35d0e0; --gray: #4a5064;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { height: 100%; }
+  body {
+    margin: 0; color: var(--text);
+    background: radial-gradient(1100px 700px at 50% -12%, #111624 0%, var(--bg) 55%) fixed var(--bg);
+    font-family: var(--font-sans);
+    /* Wall layout: the whole board fits one screen, no scroll. */
+    height: 100vh; overflow: hidden; display: flex; flex-direction: column;
+  }
+  header, .worldclocks, .ticker { flex: none; }
+  /* Data/timestamps/metrics get the monospace treatment — gives the
+     terminal feel and keeps numbers lined up (tabular-nums). */
+  .mono, .stat .value, .headline .time, .delta .sub, #meta, .clock,
+  .mapdetail, .kind-badge, .feedchip, .dupebadge, .evbadge {
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  }
+
+  header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 13px 20px; border-bottom: 1px solid var(--line);
+    border-top: 2px solid var(--accent);
+  }
+  header h1 {
+    display: flex; align-items: center; gap: 9px;
+    font-size: 16px; margin: 0; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  header h1 .mark { color: var(--accent); font-size: 15px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px; font-size: 12px;
+    background: var(--panel); border: 1px solid var(--line); color: var(--dim);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gray); }
+  .dot.ok { background: var(--green); animation: pulse 2s ease-in-out infinite; }
+  .dot.bad { background: var(--red); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+  /* World-state / threat-index gauge — a single glanceable "how hot is the
+     world right now", weighted from the SAME active alerts (dispatch-
+     alerts-v1) that already drive the ticker and map pulses -- one signal,
+     several views, not a new source of truth. */
+  .threatgauge {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 4px 10px; border-radius: 999px; font-size: 11px;
+    background: var(--panel); border: 1px solid var(--line); color: var(--dim);
+    font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .tgbar {
+    width: 46px; height: 6px; border-radius: 3px; background: var(--line);
+    overflow: hidden;
+  }
+  .tgfill {
+    display: block; height: 100%; width: 0%; border-radius: 3px;
+    background: var(--green); transition: width 0.4s ease, background 0.4s ease;
+  }
+  .tglabel { min-width: 52px; }
+  .headerRight {
+    margin-left: auto; display: flex; align-items: center; gap: 18px;
+  }
+  .kwlink {
+    color: var(--dim); font-size: 11px; text-decoration: none;
+    text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--font-mono);
+    border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px;
+  }
+  .kwlink:hover { color: var(--accent); border-color: var(--accent); }
+  /* Voice orb — the voice's presence on the board. Calm slow breath when
+     listening, bright fast pulse when something is worth saying, dimmed and
+     struck through when muted (in a meeting / Focus / quiet hours), so the
+     wall never implies it's about to speak when it can't. */
+  /* Clickable: press to have the voice read the news/headlines on demand right
+     now, instead of waiting for the next scheduled bulletin (a small "button"
+     styled as the orb itself, per the user's ask). */
+  .orb { position: relative; width: 26px; height: 26px; flex: none; cursor: pointer; }
+  .orb svg { width: 100%; height: 100%; display: block; }
+  .orb .core { fill: var(--accent); }
+  .orb .halo { fill: none; stroke: var(--accent); stroke-width: 1.5; opacity: 0.5; }
+  .orb.speaking .core { fill: #7ef0ff; }
+  .orb.speaking .halo { stroke: #7ef0ff; }
+  .orb.muted .core { fill: var(--gray); }
+  .orb.muted .halo { stroke: var(--gray); opacity: 0.3; }
+  .orb .slash { stroke: var(--gray); stroke-width: 2; display: none; }
+  .orb.muted .slash { display: block; }
+  /* On-demand read in progress: warm amber, fast pulse -- visually distinct
+     from the ambient cyan "worthy alerts pending" state. */
+  .orb.reading .core { fill: #ffd27e; }
+  .orb.reading .halo { stroke: #ffd27e; }
+  .orb.reading .core, .orb.reading .halo { animation-duration: 0.7s; }
+  @keyframes orbbreath { 0%,100% { r: 5; opacity: 1; } 50% { r: 6.5; opacity: 0.75; } }
+  @keyframes orbring   { 0% { r: 7; opacity: 0.6; } 100% { r: 12.5; opacity: 0; } }
+  .orb .core { animation: orbbreath 4s ease-in-out infinite; }
+  .orb .halo { animation: orbring 4s ease-out infinite; }
+  .orb.speaking .core { animation-duration: 1.1s; }
+  .orb.speaking .halo { animation-duration: 1.1s; }
+  .orb.muted .core, .orb.muted .halo { animation: none; }
+  .voicelabel { color: var(--dim); font-size: 11px; font-family: var(--font-mono); }
+
+  /* The on-demand "read the news" button -- a labeled pill wrapping the orb,
+     so it reads as an obvious clickable control at a glance (the bare orb
+     icon alone, especially dim/static while muted, didn't look clickable). */
+  .readnewsbtn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 5px 13px; border-radius: 999px; cursor: pointer;
+    font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+    letter-spacing: 0.05em; text-transform: uppercase;
+    border: 1.5px solid var(--accent); color: var(--accent);
+    background: rgba(53,208,224,0.08); transition: all 0.15s ease;
+    user-select: none;
+  }
+  .readnewsbtn:hover { background: rgba(53,208,224,0.20); }
+  .readnewsbtn.reading {
+    border-color: #ffd27e; color: #ffd27e; background: rgba(255,210,126,0.16);
+    /* the user: "something that just makes it blink so I know it saw it" --
+       the color swap alone was too subtle to register at a glance from
+       across the room. Two quick pulses right on click, on top of the
+       sustained color for the rest of the "reading" window below. */
+    animation: readnewsbtn-ack-pulse 0.35s ease-in-out 2;
+  }
+  @keyframes readnewsbtn-ack-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+  }
+
+  /* Big, unmissable mute switch — one click silences the voice. */
+  .mutebtn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 9px 18px; border-radius: 999px; cursor: pointer;
+    font-family: var(--font-mono); font-size: 14px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    border: 2px solid var(--accent); color: var(--accent);
+    background: rgba(53,208,224,0.10); transition: all 0.15s ease;
+    user-select: none;
+  }
+  .mutebtn:hover { background: rgba(53,208,224,0.22); }
+  .mutebtn .ic { font-size: 16px; line-height: 1; }
+  .mutebtn.muted {
+    border-color: var(--red); color: var(--red);
+    background: rgba(230,84,76,0.14);
+  }
+  .mutebtn.muted:hover { background: rgba(230,84,76,0.26); }
+
+  .clock { color: var(--dim); font-size: 12px; }
+  #meta { color: var(--dim); font-size: 12px; text-align: right; }
+
+  /* World-clock strip — a row of intel-capital times, the "situational
+     awareness" band you'd see across the top of an ops center. Pure Intl
+     timezone formatting, ticks off the 1s clock loop, no network. Night
+     cities dim + get a moon so day/night across theaters reads at a glance. */
+  .worldclocks {
+    display: flex; background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  /* Stretch the clocks evenly across the full width of the screen. */
+  .wc {
+    flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 7px 8px; border-right: 1px solid var(--line); min-width: 0;
+  }
+  .wc:last-child { border-right: none; }
+  .wc .city {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim);
+  }
+  .wc .t { font-size: 15px; font-weight: 600; color: var(--text); line-height: 1; }
+  .wc.night { opacity: 0.5; }
+  .wc.night .city::after { content: " \263E"; }
+
+  /* Breaking ticker — the always-moving chyron band. Content is the newest /
+     highest-signal items (big quakes + clustered multi-source stories float to
+     the front as "hot"). It rebuilds only when the item set changes (see
+     renderTicker) so the scroll doesn't jump on every 10s poll. Pauses on
+     hover so a link is actually clickable. */
+  .ticker {
+    display: flex; align-items: stretch; height: 60px; overflow: hidden;
+    background: #0e1119; border-bottom: 1px solid var(--line);
+  }
+  .ticker .tlabel {
+    flex: none; display: flex; align-items: center; gap: 8px;
+    padding: 0 18px; background: var(--red); color: #fff;
+    font-size: 15px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .ticker .tlabel .dot { background: #fff; animation: pulse 2s ease-in-out infinite; }
+  .ticker .twrap { flex: 1; overflow: hidden; display: flex; align-items: center; }
+  .ticker .ttrack { display: inline-flex; align-items: center; white-space: nowrap; animation: tickerscroll 60s linear infinite; }
+  .ticker:hover .ttrack { animation-play-state: paused; }
+  .ticker .titem { display: inline-flex; align-items: center; gap: 9px; padding: 0 26px; font-size: 21px; }
+  .ticker .titem a { color: var(--text); text-decoration: none; }
+  .ticker .titem a:hover { color: var(--accent); text-decoration: underline; }
+  .ticker .titem .tplace {
+    font-family: var(--font-mono); color: var(--accent);
+    font-size: 17px; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .ticker .titem.hot .tplace { color: var(--red); }
+  .ticker .titem .tsep { color: var(--gray); }
+  .ticker .tempty { padding: 0 18px; color: var(--dim); font-size: 12px; font-family: var(--font-mono); }
+  @keyframes tickerscroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+  /* Feed-health chips — per-source freshness (fresh/stale/very_stale/error),
+     distinct from the full-board STALE overlay (that's a whole-connection
+     watchdog; this is "which individual feed hasn't updated in a while").
+     Tucked into the ticker's right edge so it costs no extra vertical space
+     on a page that's deliberately fit to one screen. */
+  .feedhealth {
+    flex: none; display: flex; align-items: center; gap: 10px;
+    padding: 0 16px; border-left: 1px solid var(--line);
+  }
+  .feedhealth .fchip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: var(--font-mono); font-size: 10px; color: var(--dim);
+    white-space: nowrap; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .feedhealth .fdot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .feedhealth .fchip.fresh .fdot { background: var(--green); }
+  .feedhealth .fchip.stale .fdot { background: var(--yellow); }
+  .feedhealth .fchip.very_stale .fdot { background: #ff8c3a; }
+  .feedhealth .fchip.error .fdot { background: var(--red); }
+
+  .stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+    padding: 16px 20px;
+  }
+  .stat {
+    background: rgba(19, 23, 34, 0.78);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 10px;
+    padding: 12px 14px; position: relative; overflow: hidden;
+  }
+  /* Story-tempo sparkline (last 2h, 10-min bins from first_seen) — quiet
+     motion in the corner of the lead stat, the "is the world busy" glance. */
+  .spark { position: absolute; right: 12px; bottom: 10px; width: 42%; height: 24px; opacity: 0.85; }
+  /* News is the star metric now — a thin accent top-edge flags these four
+     tiles as the headline numbers, echoed by the same accent on the
+     Headlines panel itself. */
+  .stat.news { border-top: 2px solid var(--accent); }
+  .stat .label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  /* Micro-interaction: a stat that just changed ticks — brief accent flash +
+     scale, so movement in the numbers catches the eye from across the room. */
+  .stat .value.tick { animation: tickpulse 0.7s ease-out; }
+  @keyframes tickpulse {
+    0% { color: var(--accent); transform: scale(1.12); }
+    100% { color: var(--text); transform: scale(1); }
+  }
+  .stat .value.small {
+    font-size: 13px; font-weight: 500; line-height: 1.35; margin-top: 5px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+
+  /* One-screen grid: map + Skies side by side (about the same size) on top,
+     Headlines a full-width scrollable strip underneath. Fills the space
+     between the clocks/ticker and the bottom of the viewport. */
+  main {
+    flex: 1 1 auto; min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1.5fr 1fr;
+    grid-template-areas: "map skies" "news news";
+    gap: 16px; padding: 16px 20px;
+  }
+  .gm-map { grid-area: map; }
+  .gm-news { grid-area: news; }
+  .gm-skies { grid-area: skies; }
+  .gm-side {
+    grid-area: side; min-height: 0; display: flex; flex-direction: column; gap: 12px;
+  }
+  /* Every panel is a flex column with a fixed header and a scrolling body, so
+     nothing ever pushes the page taller than the viewport. */
+  main > .panel, .gm-side > .panel {
+    min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .gm-side > .panel { flex: 1 1 0; }
+  .panel h2 { flex: none; }
+  #newsList, #deltaList, #currentLists { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  #mapWrap { flex: 1 1 auto; min-height: 0; padding: 8px; position: relative; }
+  #mapWrap svg#map { width: 100%; height: 100%; touch-action: none; cursor: default; }
+  #mapWrap svg#map.zoomed { cursor: grab; }
+  #mapWrap svg#map.grabbing { cursor: grabbing; }
+  /* COP zoom controls — scroll/drag also work; these make it discoverable on
+     the wall. Hidden reset until zoomed in. */
+  #mapZoom {
+    position: absolute; right: 14px; bottom: 14px; z-index: 6;
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  #mapZoom button {
+    width: 30px; height: 30px; border-radius: 7px; cursor: pointer;
+    font-size: 17px; line-height: 1; font-weight: 600; color: #cfe6f0;
+    background: rgba(14,20,36,0.82); border: 1px solid rgba(120,160,210,0.35);
+    backdrop-filter: blur(3px); transition: background 0.12s, border-color 0.12s;
+  }
+  #mapZoom button:hover { background: rgba(30,44,72,0.92); border-color: rgba(150,190,235,0.6); }
+  #mapZoom button.hidden { display: none; }
+  /* Quick region jump — a fast way to a theater without scroll/drag. */
+  #mapRegionSelect {
+    width: 30px; height: 26px; border-radius: 7px; cursor: pointer;
+    font-size: 10px; color: #cfe6f0; text-align: center; text-align-last: center;
+    background: rgba(14,20,36,0.82); border: 1px solid rgba(120,160,210,0.35);
+    backdrop-filter: blur(3px);
+  }
+  #mapRegionSelect:hover { background: rgba(30,44,72,0.92); border-color: rgba(150,190,235,0.6); }
+  #mapZoomInfo {
+    position: absolute; left: 14px; bottom: 14px; z-index: 6;
+    font-size: 11px; letter-spacing: 0.04em; color: #8fb0d8;
+    background: rgba(14,20,36,0.7); padding: 2px 7px; border-radius: 5px;
+    pointer-events: none; opacity: 0; transition: opacity 0.2s;
+  }
+  #mapZoomInfo.on { opacity: 1; }
+  .maplegend, .mapdetail, .flightdetail, #feedRow { flex: none; }
+  .gm-skies .skiesbody { flex: 1 1 auto; min-height: 0; }
+  #flightBoard { overflow-y: auto; }
+
+  /* Mobile (not the target — just don't break): let it scroll and stack. */
+  @media (max-width: 900px) {
+    body { height: auto; overflow: auto; }
+    main {
+      grid-template-columns: 1fr; grid-template-rows: none;
+      grid-template-areas: "map" "skies" "news";
+    }
+    main > .panel, #newsList, #deltaList, #currentLists { max-height: 60vh; }
+  }
+
+  .panel {
+    /* Glass panel: translucent over the body vignette + blur, with a hairline
+       border — the 2026 "dark glassmorphism" read instead of flat gray cards. */
+    background: rgba(19, 23, 34, 0.78);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 10px;
+    overflow: hidden;
+  }
+  /* HUD corner brackets (the Arwes/sci-fi frame language, in plain CSS):
+     accent L-corners top-left + bottom-right on the hero panels and stats. */
+  .hud { position: relative; }
+  .hud::before, .hud::after {
+    content: ""; position: absolute; width: 14px; height: 14px; pointer-events: none;
+  }
+  .hud::before {
+    top: -1px; left: -1px;
+    border-top: 2px solid var(--accent); border-left: 2px solid var(--accent);
+    opacity: 0.75; border-top-left-radius: 8px;
+  }
+  .hud::after {
+    bottom: -1px; right: -1px;
+    border-bottom: 2px solid var(--accent); border-right: 2px solid var(--accent);
+    opacity: 0.45; border-bottom-right-radius: 8px;
+  }
+  .panel h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim);
+    margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .evbadge {
+    font-size: 10px; font-weight: 500; text-transform: none; letter-spacing: normal;
+    color: var(--dim); background: var(--bg); border: 1px solid var(--line);
+    padding: 2px 8px; border-radius: 999px;
+  }
+  .section-label {
+    grid-column: 1 / -1; font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.14em; color: var(--dim); margin: 6px 2px -2px;
+  }
+  .feedgroup { max-height: 220px; overflow-y: auto; }
+  .feedgroup h3 {
+    font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em;
+    margin: 0; padding: 10px 14px 4px;
+  }
+  .delta a { color: var(--accent); text-decoration: none; }
+  .delta a:hover { text-decoration: underline; }
+
+  #feedRow { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px 0; }
+  .feedchip {
+    font-size: 11px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line);
+    color: var(--dim); display: inline-flex; align-items: center; gap: 5px;
+  }
+
+  #deltaList { max-height: 340px; overflow-y: auto; }
+  .delta {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px;
+  }
+  .delta:last-child { border-bottom: none; }
+  .sev-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 4px; flex: none; }
+  .sev-low { background: var(--green); }
+  .sev-med { background: var(--yellow); }
+  .sev-high { background: var(--red); }
+  .sev-none { background: var(--gray); }
+  .delta .body { flex: 1; min-width: 0; }
+  .delta .title { color: var(--text); }
+  .delta .sub { color: var(--dim); font-size: 11px; margin-top: 2px; }
+  .kind-badge {
+    font-size: 10px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line);
+    color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; margin-left: 6px;
+  }
+  .empty { padding: 20px 14px; color: var(--dim); font-size: 13px; }
+
+  #mapWrap { padding: 10px; }
+  svg#map { width: 100%; height: auto; display: block; border-radius: 6px; }
+  .grat { stroke: #161c2c; stroke-width: 1; }
+  .grat.major { stroke: #1f2740; }
+  .landline { stroke: #333c58; stroke-width: 1; fill: none; }
+  /* COP look: land darker than before but lighter than the ocean vignette,
+     hairline strokes — the map is a stage; the light comes from the events. */
+  .country { fill: #1b2742; stroke: #44608f; stroke-width: 0.4; stroke-linejoin: round; }
+  .landdot { fill: #33497c; }
+  .pin { stroke: #0b0e14; stroke-width: 1; cursor: pointer; filter: url(#pinglow); }
+  .pin:hover, .pin.sel { stroke: #fff; stroke-width: 2; }
+  .pin.newpin { stroke: #fff; stroke-width: 1.6; }
+  .newspin { fill: var(--accent); stroke: #0b0e14; stroke-width: 1; opacity: 0.9; cursor: pointer; filter: url(#pinglow); }
+  .newspin:hover { stroke: #fff; stroke-width: 2; }
+  .pulsering { fill: none; stroke-width: 1.5; pointer-events: none; }
+  .alertdot { fill: var(--red); stroke: #0b0e14; stroke-width: 1; cursor: pointer; }
+  .alertdot:hover { stroke: #fff; stroke-width: 2; }
+  /* Convergence — 3+ independent signals on one place, the deepest/rarest
+     alert kind. Distinct violet so it never blends into an ordinary red
+     breaking pulse. */
+  .alertdot.convergencedot { fill: #c86dff; stroke-width: 1.5; }
+  .alertdot.convergencedot:hover { stroke: #fff; stroke-width: 2.5; }
+  .pinlabel { fill: #cdd6f0; font: 9px system-ui, sans-serif; pointer-events: none; paint-order: stroke; stroke: #0b0e14; stroke-width: 2px; }
+  /* Quakes: fewer labels (top 3), and subtler than before — news pins carry
+     the map now, magnitude labels are supporting detail, not the headline. */
+  .pinlabel.quake { font-size: 8px; fill: var(--dim); opacity: 0.9; }
+  /* Quakes = quiet background dots (news is the star). */
+  .quakepin { fill: #56617e; opacity: 0.5; stroke: none; cursor: pointer; }
+  .quakepin:hover { opacity: 0.9; }
+  .quakepin.major { fill: #8b93ad; opacity: 0.7; }
+  .pinlabel.newslabel { fill: var(--accent); font-weight: 600; font-size: 11px; }
+  .pinlabel.beatlabel { fill: var(--yellow); font-weight: 700; }
+  .newspin.beatpin { fill: var(--yellow); stroke: #0b0e14; stroke-width: 1; }
+  .maplegend { display: flex; gap: 14px; flex-wrap: wrap; margin: 8px 2px 0; font-size: 11px; color: var(--dim); }
+  .maplegend .lg { display: inline-flex; align-items: center; gap: 5px; }
+  .maplegend .sw { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .maplegend .muted-note { font-style: italic; opacity: 0.85; }
+  /* Clicked-dot detail: big and prominent so it's readable from across the
+     room, with an accent bar so a fresh click is obvious. */
+  .mapdetail {
+    margin: 10px 2px 0; font-size: 17px; line-height: 1.4; color: var(--text);
+    min-height: 24px; border-left: 3px solid var(--accent); border-radius: 4px;
+    padding: 12px 14px; background: rgba(53,208,224,0.07);
+  }
+  .mapdetail b { font-size: 18px; }
+  .mapdetail .muted { color: var(--dim); font-size: 14px; }
+  .mapdetail a { color: var(--accent); text-decoration: none; }
+  .mapdetail a:hover { text-decoration: underline; }
+
+  .gm-map { box-shadow: 0 0 0 1px rgba(53,208,224,0.05), 0 10px 34px rgba(0,0,0,0.4); }
+  .gm-news { border-top: 2px solid var(--accent); }
+  .gm-map h2, .gm-news h2, .gm-skies h2 {
+    font-size: 17px; font-weight: 600; padding: 13px 18px;
+    color: var(--text); text-transform: none; letter-spacing: 0.01em;
+  }
+  /* Headlines is now a full-width strip (moved off the tall right rail), so a
+     single column left most of each wide row empty. Two columns via GRID
+     (not CSS multi-column: that overflows sideways into extra hidden columns
+     once content exceeds the container height -- caught live, only 5 of 77
+     headlines were actually reachable). grid-auto-flow:row fills left/right
+     per row and grows downward like a normal list, so the existing
+     overflow-y:auto on #newsList keeps working. */
+  #newsList { display: grid; grid-template-columns: 1fr 1fr; grid-auto-flow: row; }
+  #newsList .headline:nth-child(2n) { border-left: 1px solid var(--line); }
+  @media (max-width: 900px) {
+    #newsList { grid-template-columns: 1fr; }
+    #newsList .headline:nth-child(2n) { border-left: none; }
+  }
+  .headline {
+    display: flex; gap: 14px; align-items: baseline;
+    padding: 12px 18px; border-bottom: 1px solid var(--line); font-size: 16px;
+  }
+  .headline:last-child { border-bottom: none; }
+  .headline .time {
+    color: var(--accent); font-size: 13px;
+    flex: none; width: 74px;
+  }
+  .headline .body { flex: 1; min-width: 0; }
+  .headline .title a { color: var(--text); text-decoration: none; font-weight: 500; }
+  .headline .title a:hover { text-decoration: underline; color: var(--accent); }
+  .headline .src { color: var(--dim); font-size: 12px; margin-top: 3px; }
+  .dupebadge {
+    display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px;
+    background: var(--line); color: var(--dim);
+    font-size: 10px; font-weight: 600; vertical-align: middle; cursor: default;
+  }
+  /* Curation: the local model scored this story squarely on the user's beat. */
+  .beatbadge {
+    display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px;
+    background: rgba(224, 178, 62, 0.14); color: var(--yellow);
+    border: 1px solid rgba(224, 178, 62, 0.4);
+    font-size: 10px; font-weight: 700; vertical-align: middle; cursor: default;
+    font-family: var(--font-mono); letter-spacing: 0.06em;
+  }
+
+  /* "Skies" departure board (theflightwall.com vibe): a monospace LED-style
+     grid of aircraft overhead. Amber-on-black, tabular, quietly alive. */
+  .skies h2 .evbadge { margin-left: auto; }
+  /* Local radar map beside the board. Skies now sits beside the COP map (same
+     row height), so the radar STRETCHES to fill that full height instead of
+     being capped at a small fixed vh (was sized for the old, shorter bottom
+     row and looked tiny once the panel got taller). */
+  .skiesbody { display: grid; grid-template-columns: auto 1fr; gap: 0; align-items: stretch; overflow: hidden; min-height: 0; }
+  @media (max-width: 900px) { .skiesbody { grid-template-columns: 1fr; } }
+  #skiesMap { padding: 10px; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  #skiesMap svg { width: auto; flex: 1 1 auto; min-height: 0; display: block; margin: 0 auto; }
+  /* Invisible, generous click target over each (tiny, moving) aircraft. */
+  .radar-hit { fill: transparent; cursor: pointer; }
+  #flightBoard { min-width: 0; }
+  .radar-ring { fill: none; stroke: #2a3550; stroke-width: 1; }
+  .radar-cross { stroke: #222c44; stroke-width: 1; }
+  .radar-home { fill: var(--accent); }
+  /* Aircraft coloured by vertical trend: climbing=departing, descending=
+     arriving, level=overflying — the useful glance near an airport. */
+  .radar-ac { fill: #ffb000; stroke: #0b0e14; stroke-width: 0.5; cursor: default; }
+  .radar-ac.up { fill: var(--green); }
+  .radar-ac.down { fill: #ff8c3a; }
+  .radar-ac.level { fill: #7fb2ff; }
+  .radar-ac.ground { fill: var(--gray); opacity: 0.55; }
+  .radar-legend { display: flex; gap: 12px; flex-wrap: wrap; padding: 4px 12px 0; font: 10px var(--font-mono); color: var(--dim); }
+  .radar-legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .radar-legend i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .radar-label { fill: #cdd6f0; font: 8px var(--font-mono); pointer-events: none; }
+  .radar-scale { fill: var(--dim); font: 9px var(--font-mono); }
+  /* Ground reference: airports (diamonds) + cities (dots) so the radar is
+     legible — you can see which cluster is DCA vs IAD. */
+  .radar-border { fill: none; stroke: #33415f; stroke-width: 0.8; stroke-linejoin: round; }
+  .radar-airport { fill: none; stroke: #6d86c4; stroke-width: 1; }
+  .radar-city { fill: #46557c; }
+  .radar-place { fill: #8fa0c8; font: 8px var(--font-mono); pointer-events: none; }
+  .radar-place.air { fill: #a9bbe6; font-weight: 700; }
+  #flightBoard { font-family: var(--font-mono); }
+  .flightrow {
+    display: grid;
+    grid-template-columns: 132px 104px 66px 54px 88px;
+    gap: 8px; align-items: center;
+    padding: 8px 18px; border-bottom: 1px solid var(--line);
+    font-size: 14px; font-variant-numeric: tabular-nums;
+  }
+  .flightrow .fcell { min-width: 0; }
+  .flightrow .airline {
+    display: block; color: var(--dim); font-size: 10px; font-weight: 400;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;
+  }
+  .flightrow .route { color: var(--text); font-size: 12px; white-space: nowrap; }
+  .flightrow .route .arr { color: var(--dim); padding: 0 2px; }
+  .flightrow .route.none { color: var(--gray); }
+  #flightBoard .flightrow:not(.head) { cursor: pointer; }
+  #flightBoard .flightrow:not(.head):hover { background: rgba(53,208,224,0.06); }
+  .flightrow.sel { background: rgba(53,208,224,0.12); }
+  .flightdetail {
+    margin: 8px 12px 12px; padding: 10px 14px; font-size: 14px; line-height: 1.4;
+    color: var(--text); border-left: 3px solid #ffb000; border-radius: 4px;
+    background: rgba(255,176,0,0.06);
+  }
+  .flightdetail b { font-family: var(--font-mono); font-size: 15px; color: #ffb000; }
+  .flightdetail .muted { color: var(--dim); }
+  .flightdetail a { color: var(--accent); text-decoration: none; margin-left: 6px; }
+  .flightdetail a:hover { text-decoration: underline; }
+  .flightrow:last-child { border-bottom: none; }
+  .flightrow.head {
+    color: var(--dim); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.08em; border-bottom: 1px solid var(--line);
+  }
+  .flightrow .cs { color: #ffb000; font-weight: 700; letter-spacing: 0.04em; }  /* LED amber */
+  .flightrow .cs.up { color: var(--green); }
+  .flightrow .cs.down { color: #ff8c3a; }
+  .flightrow .cs.level { color: #7fb2ff; }
+  .flightrow.ground { opacity: 0.45; }
+  .flightrow.ground .cs { color: var(--dim); }
+  .flightrow .num { text-align: right; color: var(--text); }
+  .flightrow .climb.up { color: var(--green); }
+  .flightrow .climb.down { color: var(--red); }
+  .flightrow .climb.level { color: var(--dim); }
+  .skies .empty { font-family: var(--font-mono); }
+
+  footer { padding: 10px 20px 22px; color: var(--dim); font-size: 11px; text-align: center; }
+
+  /* Wall-mode hardening: when the server has been unreachable for >30s the
+     whole board dims and a STALE watermark takes over — you should never
+     glance at a dead board and believe it. */
+  body.stale header, body.stale .worldclocks, body.stale .ticker,
+  body.stale main {
+    opacity: 0.3; filter: grayscale(0.7); transition: opacity 0.6s, filter 0.6s;
+  }
+  #staleOverlay {
+    display: none; position: fixed; inset: 0; z-index: 99;
+    align-items: center; justify-content: center; flex-direction: column; gap: 10px;
+    pointer-events: none; text-align: center;
+  }
+  body.stale #staleOverlay { display: flex; }
+  #staleOverlay .big {
+    font-family: var(--font-mono); font-size: 42px; font-weight: 700;
+    letter-spacing: 0.18em; color: var(--red); text-transform: uppercase;
+  }
+  #staleOverlay .sub { font-family: var(--font-mono); font-size: 16px; color: var(--text); }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="mark">&#9673;</span>THE DISPATCH</h1>
+  <span class="pill"><span class="dot" id="healthDot"></span><span id="healthText">checking…</span></span>
+  <span class="threatgauge" id="threatGauge" title="World-state index — weighted from active alerts">
+    <span class="tgbar"><span class="tgfill" id="tgFill"></span></span>
+    <span class="tglabel" id="tgLabel">—</span>
+  </span>
+  <button class="readnewsbtn" id="readNewsBtn" title="click to read the news now">
+    <span class="orb" id="jarvisOrb">
+      <svg viewBox="0 0 26 26" xmlns="http://www.w3.org/2000/svg">
+        <circle class="halo" cx="13" cy="13" r="7"/>
+        <circle class="core" cx="13" cy="13" r="5"/>
+        <line class="slash" x1="5" y1="21" x2="21" y2="5"/>
+      </svg>
+    </span>
+    <span>Read news</span>
+  </button>
+  <span class="voicelabel" id="voiceLabel">voice</span>
+  <button class="mutebtn" id="muteBtn" title="Silence the Dispatch voice">
+    <span class="ic" id="muteIcon">&#128266;</span><span id="muteText">Voice on</span>
+  </button>
+  <div class="headerRight">
+    <a href="/keywords" class="kwlink" title="Manage Google News RSS beat keywords">Keywords</a>
+    <span class="clock" id="clock">–</span>
+    <span id="meta"></span>
+  </div>
+</header>
+
+<div class="worldclocks" id="worldClocks"></div>
+
+<div class="ticker" id="ticker">
+  <div class="tlabel"><span class="dot"></span>Breaking</div>
+  <div class="twrap"><div class="ttrack" id="tickerTrack"><span class="tempty">Monitoring…</span></div></div>
+</div>
+
+<main>
+  <div class="panel hud gm-map">
+    <h2>Common Operating Picture <span class="evbadge">live · click a dot</span></h2>
+    <div id="mapWrap">
+      <svg id="map" viewBox="0 0 720 278" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <!-- Modern COP treatment: soft glow on event dots, radial "attention
+               heat" under news pins, and a subtle ocean vignette so the map
+               reads as a lit display, not a flat chart. -->
+          <filter id="pinglow" x="-150%" y="-150%" width="400%" height="400%">
+            <feGaussianBlur stdDeviation="1.6" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <radialGradient id="heatdot">
+            <stop offset="0%" stop-color="#35d0e0" stop-opacity="0.30"/>
+            <stop offset="100%" stop-color="#35d0e0" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="ocean" cx="50%" cy="42%" r="78%">
+            <stop offset="0%" stop-color="#0e1424"/>
+            <stop offset="100%" stop-color="#070a12"/>
+          </radialGradient>
+        </defs>
+        <rect x="0" y="0" width="720" height="278" fill="url(#ocean)"/>
+      </svg>
+      <div id="mapZoomInfo"></div>
+      <div id="mapZoom">
+        <select id="mapRegionSelect" title="Jump to a region">
+          <option value="">🌐</option>
+          <option value="americas">Americas</option>
+          <option value="europe">Europe</option>
+          <option value="middle_east">Mideast</option>
+          <option value="east_asia">E. Asia</option>
+        </select>
+        <button id="mapZoomIn" title="Zoom in (scroll up)">+</button>
+        <button id="mapZoomOut" title="Zoom out (scroll down)">&minus;</button>
+        <button id="mapZoomReset" class="hidden" title="Reset to world view">&#x2922;</button>
+      </div>
+    </div>
+    <div id="mapLegend" class="maplegend"></div>
+    <div id="mapDetail" class="mapdetail"><span class="muted">Click or hover a dot for the event detail.</span></div>
+  </div>
+  <div class="panel hud gm-skies" id="skiesPanel" style="display:none">
+    <h2>Skies — aircraft overhead <span class="evbadge" id="skiesCount">–</span></h2>
+    <div class="skiesbody">
+      <div id="skiesMap">
+        <svg id="radarSvg" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="radar-legend">
+          <span><i style="background:var(--green)"></i>departing</span>
+          <span><i style="background:#ff8c3a"></i>arriving</span>
+          <span><i style="background:#7fb2ff"></i>overflying</span>
+        </div>
+      </div>
+      <div id="flightBoard"></div>
+    </div>
+    <div id="flightDetail" class="flightdetail"><span class="muted">Click a flight or a dot for details.</span></div>
+  </div>
+  <div class="panel hud gm-news">
+    <h2>Headlines — last <span id="newsWindowHours">2</span>h, all sources</h2>
+    <div id="newsList" class="dense"><div class="empty">Loading…</div></div>
+  </div>
+</main>
+
+<div id="staleOverlay"><div class="big">&#9888; Stale</div><div class="sub">server unreachable — last data <span id="staleTime">–</span></div></div>
+
+<script src="/static/js/01-utils.js"></script>
+<script src="/static/js/02-clock.js"></script>
+<script src="/static/js/03-map-core.js"></script>
+<script src="/static/js/04-map-zoom.js"></script>
+<script src="/static/js/05-map-news.js"></script>
+<script src="/static/js/06-panels.js"></script>
+<script src="/static/js/07-alerts-ticker.js"></script>
+<script src="/static/js/08-flights-radar.js"></script>
+<script src="/static/js/09-voice-main.js"></script>
+<script src="/static/js/10-feed-health.js"></script>
+<script src="/static/js/11-threat-gauge.js"></script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+# Free RSS sources. Add/remove freely. trust: high|medium|low feeds the score.
+# (Paid sources — GovWin, Bloomberg Gov, Intelligence Online — are intentionally
+# omitted; add them later only if you have accounts/APIs.)
+sources:
+  - name: Defense One
+    type: news
+    trust: high
+    rss: https://www.defenseone.com/rss/all/
+  - name: Breaking Defense
+    type: news
+    trust: high
+    rss: https://breakingdefense.com/feed/
+  - name: DefenseScoop
+    type: news
+    trust: high
+    rss: https://defensescoop.com/feed/
+  - name: FedScoop
+    type: news
+    trust: medium
+    rss: https://fedscoop.com/feed/
+  - name: Federal News Network (Defense)
+    type: news
+    trust: medium
+    rss: https://federalnewsnetwork.com/category/defense-main/feed/
+  - name: DoD News
+    type: gov
+    trust: high
+    rss: https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=1&Site=945&max=20
+  - name: C4ISRNET
+    type: news
+    trust: medium
+    rss: https://www.c4isrnet.com/arc/outboundfeeds/rss/
+  - name: The Record (cyber)
+    type: news
+    trust: medium
+    rss: https://therecord.media/feed
+
+# Email newsletters (from the existing Apps Script). These need a Gmail ingestor
+# (brief/ingest/gmail.py, read-only OAuth) — not RSS. Ported here so the curated
+# list lives in one place. Note: Defense Scoop already comes in via RSS above.
+newsletters:
+  - sender: dc@axios.com
+    name: Axios
+  - sender: mike@axios.com
+    name: Axios
+  - sender: news@defensenews.com
+    name: Early Bird
+  - sender: washingtondc@semafor.com
+    name: Semafor
+  - sender: newsletters@notus.org
+    name: NOTUS
+  - sender: newsletter@internationalintrigue.io
+    name: International Intrigue
+  - sender: news@defensescoop.com
+    name: Defense Scoop   # also via RSS — dedupe will handle overlap

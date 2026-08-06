@@ -1,0 +1,181 @@
+# Open Window (v3) news firehose — window-specific, broad roster for the
+# "last 2 hours, prominent" Headlines panel. Same {name,type,trust,rss}
+# schema as config/sources.yaml. This file is separate ON PURPOSE: the
+# curated AM Apps Script digest keeps reading sources.yaml unchanged; the
+# window's news loop reads THIS file if it exists (config.load_news_firehose()),
+# falling back to sources.yaml only if this file is absent.
+#
+# Every entry below was fetch-tested with feedparser.parse() on 2026-07-16 and
+# returned real entries at the time of testing. Dead candidates (403s, 404s,
+# redirects to nowhere) were dropped rather than guessed at — see
+# 's v3 report for the full kept/dropped list.
+# Fail-soft: if a feed goes dark later, brief/ingest/rss.py already skips it
+# and logs, the rest of the firehose keeps flowing.
+sources:
+  # --- existing curated set (config/sources.yaml), carried in unchanged ---
+  - name: Defense One
+    type: news
+    trust: high
+    rss: https://www.defenseone.com/rss/all/
+  - name: Breaking Defense
+    type: news
+    trust: high
+    rss: https://breakingdefense.com/feed/
+  - name: DefenseScoop
+    type: news
+    trust: high
+    rss: https://defensescoop.com/feed/
+  - name: FedScoop
+    type: news
+    trust: medium
+    rss: https://fedscoop.com/feed/
+  - name: Federal News Network (Defense)
+    type: news
+    trust: medium
+    rss: https://federalnewsnetwork.com/category/defense-main/feed/
+  - name: DoD News
+    type: gov
+    trust: high
+    rss: https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=1&Site=945&max=20
+  - name: C4ISRNET
+    type: news
+    trust: medium
+    rss: https://www.c4isrnet.com/arc/outboundfeeds/rss/
+  - name: The Record (cyber)
+    type: news
+    trust: medium
+    rss: https://therecord.media/feed
+
+  # --- v3 broadening: defense / intel / geopolitics ---
+  - name: War on the Rocks
+    type: news
+    trust: high
+    rss: https://warontherocks.com/feed/
+  - name: The Cipher Brief
+    type: news
+    trust: medium
+    rss: https://www.thecipherbrief.com/feed
+  - name: Defense News
+    type: news
+    trust: high
+    rss: https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml
+  - name: Naval News
+    type: news
+    trust: medium
+    rss: https://www.navalnews.com/feed/
+  - name: The War Zone (TWZ)
+    type: news
+    trust: medium
+    rss: https://www.twz.com/feed
+  - name: Task & Purpose
+    type: news
+    trust: medium
+    rss: https://taskandpurpose.com/feed/
+  - name: CSIS
+    type: think-tank
+    trust: high
+    rss: https://www.csis.org/rss.xml
+  - name: Bellingcat
+    type: news
+    trust: high
+    rss: https://www.bellingcat.com/feed/
+  # Just Security removed 2026-07-28 (Fable's log-scan: 403 on every fetch,
+  # 978x) -- confirmed live still bot-walled (Cloudflare-style 403, no
+  # User-Agent/re-auth fix available for a plain RSS feed). Was already known
+  # bot-walled per an earlier session's source-health check; this just stops
+  # polling a permanently-blocked source every cycle.
+  - name: The Diplomat
+    type: news
+    trust: medium
+    rss: https://thediplomat.com/feed/
+  - name: SpaceNews
+    type: news
+    trust: medium
+    rss: https://spacenews.com/feed/
+  - name: Foreign Policy
+    type: news
+    trust: high
+    rss: https://foreignpolicy.com/feed/
+  - name: Foreign Affairs
+    type: news
+    trust: high
+    rss: https://www.foreignaffairs.com/rss.xml
+  - name: DoD Contracts
+    type: gov
+    trust: high
+    rss: https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=800&Site=945&max=20
+
+  # --- v3 broadening: GovCon / federal IT ---
+  - name: Nextgov/FCW
+    type: news
+    trust: medium
+    rss: https://www.nextgov.com/rss/all/
+  - name: Washington Technology
+    type: news
+    trust: medium
+    rss: https://washingtontechnology.com/rss-feeds/all.aspx
+  - name: Government Executive
+    type: news
+    trust: medium
+    rss: https://www.govexec.com/rss/all/
+  - name: GovConWire
+    type: news
+    trust: medium
+    rss: https://govconwire.com/feed/
+
+  # --- v3 broadening: cyber ---
+  - name: Krebs on Security
+    type: news
+    trust: high
+    rss: https://krebsonsecurity.com/feed/
+  - name: BleepingComputer
+    type: news
+    trust: medium
+    rss: https://www.bleepingcomputer.com/feed/
+  - name: The Hacker News
+    type: news
+    trust: medium
+    rss: https://feeds.feedburner.com/TheHackersNews
+  - name: Dark Reading
+    type: news
+    trust: medium
+    rss: https://www.darkreading.com/rss.xml
+
+  # --- v3 broadening: general wire / world ---
+  - name: Al Jazeera
+    type: news
+    trust: medium
+    rss: https://www.aljazeera.com/xml/rss/all.xml
+  - name: BBC World
+    type: news
+    trust: high
+    rss: http://feeds.bbci.co.uk/news/world/rss.xml
+  - name: NPR News
+    type: news
+    trust: high
+    rss: https://feeds.npr.org/1001/rss.xml
+  - name: The Guardian World
+    type: news
+    trust: medium
+    rss: https://www.theguardian.com/world/rss
+  - name: South China Morning Post
+    type: news
+    trust: medium
+    rss: https://www.scmp.com/rss/91/feed
+  - name: Al-Monitor
+    type: news
+    trust: medium
+    rss: https://www.al-monitor.com/rss
+  - name: Axios
+    type: news
+    trust: medium
+    rss: https://api.axios.com/feed/
+
+# Fetch-tested and DROPPED (2026-07-16, feedparser returned 0 entries / 403 /
+# 404 with and without a browser User-Agent) — not included above:
+# Lawfare (lawfaremedia.org — 403, Cloudflare-blocked), Military.com (all
+# known feed paths 404), Stars and Stripes (all known feed paths 404/301 to
+# nowhere), CISA advisories/alerts (cisa.gov — 403, Cloudflare-blocked), ISW
+# understandingwar.org (403, Cloudflare-blocked), CNAS (cnas.org — 404 on all
+# tried paths), Reuters public RSS (dead, as the plan warned), Politico
+# (403), AP via rsshub mirror (403).

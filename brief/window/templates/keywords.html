@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Dispatch — Beat Keywords</title>
+<style>
+  :root {
+    --bg: #0b0e14; --panel: #131722; --line: #262c3a; --text: #e6e9f0;
+    --dim: #8891a6; --accent: #35d0e0; --red: #e6544c;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: "SF Mono", ui-monospace, "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--text); font-family: var(--font-sans);
+    background: radial-gradient(1100px 700px at 50% -12%, #111624 0%, var(--bg) 55%) fixed var(--bg);
+    display: flex; justify-content: center; padding: 40px 20px;
+  }
+  .wrap { width: 100%; max-width: 560px; }
+  h1 {
+    font-size: 16px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    margin: 0 0 4px; display: flex; align-items: center; gap: 9px;
+  }
+  h1 .mark { color: var(--accent); }
+  h2 {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--dim); margin: 28px 0 8px;
+  }
+  p.sub { color: var(--dim); font-size: 13px; margin: 0 0 24px; line-height: 1.5; }
+  .panel {
+    background: rgba(19, 23, 34, 0.78); border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px; padding: 18px;
+  }
+  .addrow { display: flex; gap: 8px; margin-bottom: 16px; }
+  .addrow input {
+    flex: 1; background: var(--bg); border: 1px solid var(--line); color: var(--text);
+    border-radius: 7px; padding: 10px 12px; font-size: 14px; font-family: var(--font-sans);
+  }
+  .addrow input:focus { outline: none; border-color: var(--accent); }
+  .addrow button, .kw button {
+    background: rgba(53,208,224,0.12); border: 1px solid var(--accent); color: var(--accent);
+    border-radius: 7px; padding: 10px 16px; font-size: 13px; font-weight: 700;
+    letter-spacing: 0.04em; cursor: pointer; text-transform: uppercase;
+  }
+  .addrow button:hover { background: rgba(53,208,224,0.24); }
+  .addrow button:disabled { opacity: 0.5; cursor: default; }
+  ul#kwList { list-style: none; margin: 0; padding: 0; }
+  .kw {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 4px; border-bottom: 1px solid var(--line); font-size: 14px;
+  }
+  .kw:last-child { border-bottom: none; }
+  .kw button {
+    background: rgba(230,84,76,0.10); border-color: var(--red); color: var(--red);
+    padding: 4px 10px; font-size: 11px;
+  }
+  .kw button:hover { background: rgba(230,84,76,0.22); }
+  .empty { color: var(--dim); font-size: 13px; padding: 10px 4px; }
+  .status { min-height: 18px; font-size: 12px; color: var(--dim); margin-top: 12px; font-family: var(--font-mono); }
+  .status.err { color: var(--red); }
+  a.back { color: var(--dim); font-size: 12px; text-decoration: none; }
+  a.back:hover { color: var(--accent); }
+  p.hint { color: var(--dim); font-size: 12px; margin: 0 0 14px; line-height: 1.5; }
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill {
+    border-radius: 999px; padding: 7px 14px; font-size: 13px; cursor: pointer;
+    border: 1px solid var(--line); color: var(--dim); background: transparent;
+    font-family: var(--font-sans); transition: all 0.12s ease;
+  }
+  .pill:hover { border-color: var(--accent); color: var(--text); }
+  .pill.on {
+    border-color: var(--accent); color: var(--accent); background: rgba(53,208,224,0.12);
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="mark">&#9673;</span>BEAT KEYWORDS — GOOGLE NEWS RSS</h1>
+  <p class="sub">
+    Drives the free Google News RSS feed (the NewsAPI.ai replacement) — add or remove
+    anything below any time; the next news cycle (within a few minutes) picks it up,
+    no restart needed.
+  </p>
+
+  <h2>Curated Feeds</h2>
+  <p class="hint">
+    Google's own editorial feeds — click to turn on/off. These cover "breaking" and
+    "world" properly; searching those words literally just matches articles that
+    happen to contain them.
+  </p>
+  <div class="panel">
+    <div class="pills" id="feedPills"></div>
+  </div>
+
+  <h2>Search Keywords</h2>
+  <p class="hint">
+    Plain search terms — great for beat topics AND for local-area names
+    (e.g. "Washington, DC" genuinely returns local DC-area news).
+  </p>
+  <div class="panel">
+    <div class="addrow">
+      <input id="kwInput" type="text" placeholder="e.g. post-quantum cryptography" autocomplete="off">
+      <button id="addBtn">Add</button>
+    </div>
+    <ul id="kwList"></ul>
+    <div class="empty" id="emptyMsg" style="display:none">No keywords yet — add one above.</div>
+  </div>
+
+  <div class="status" id="statusMsg"></div>
+  <p style="margin-top:20px"><a class="back" href="/">&larr; back to the board</a></p>
+</div>
+<script>
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+function setStatus(msg, isErr) {
+  const el = document.getElementById("statusMsg");
+  el.textContent = msg || "";
+  el.classList.toggle("err", !!isErr);
+}
+
+// --- search keywords ---------------------------------------------------
+
+function renderKeywords(keywords) {
+  const list = document.getElementById("kwList");
+  const empty = document.getElementById("emptyMsg");
+  if (!keywords || !keywords.length) {
+    list.innerHTML = "";
+    empty.style.display = "block";
+    return;
+  }
+  empty.style.display = "none";
+  list.innerHTML = keywords.map(k =>
+    `<li class="kw"><span>${escapeHtml(k)}</span><button data-kw="${escapeHtml(k)}">Remove</button></li>`
+  ).join("");
+  list.querySelectorAll("button[data-kw]").forEach(btn => {
+    btn.addEventListener("click", () => removeKeyword(btn.dataset.kw));
+  });
+}
+async function loadKeywords() {
+  try {
+    const res = await fetch("/api/google_news/keywords");
+    const body = await res.json();
+    renderKeywords(body.keywords || []);
+  } catch (e) {
+    setStatus("Failed to load keywords — is the board running?", true);
+  }
+}
+async function addKeyword() {
+  const input = document.getElementById("kwInput");
+  const kw = input.value.trim();
+  if (!kw) return;
+  const addBtn = document.getElementById("addBtn");
+  addBtn.disabled = true;
+  try {
+    const res = await fetch("/api/google_news/keywords/add?keyword=" + encodeURIComponent(kw), { method: "POST" });
+    const body = await res.json();
+    renderKeywords(body.keywords || []);
+    input.value = "";
+    setStatus(`Added "${kw}".`);
+  } catch (e) {
+    setStatus("Failed to add keyword.", true);
+  } finally {
+    addBtn.disabled = false;
+    input.focus();
+  }
+}
+async function removeKeyword(kw) {
+  try {
+    const res = await fetch("/api/google_news/keywords/remove?keyword=" + encodeURIComponent(kw), { method: "POST" });
+    const body = await res.json();
+    renderKeywords(body.keywords || []);
+    setStatus(`Removed "${kw}".`);
+  } catch (e) {
+    setStatus("Failed to remove keyword.", true);
+  }
+}
+document.getElementById("addBtn").addEventListener("click", addKeyword);
+document.getElementById("kwInput").addEventListener("keydown", e => {
+  if (e.key === "Enter") addKeyword();
+});
+
+// --- curated feeds (top stories + topic sections) -----------------------
+
+let TOPICS = {};       // name -> token
+let ACTIVE_FEEDS = []; // current feed list from the server
+
+function feedKey(type, value) { return type + "|" + (value || ""); }
+function activeKeySet() {
+  return new Set(ACTIVE_FEEDS.map(f => feedKey(f.type, f.value || "")));
+}
+function renderFeedPills() {
+  const el = document.getElementById("feedPills");
+  const active = activeKeySet();
+  const pills = [{ label: "Breaking / Top Stories", type: "top", value: "" }];
+  for (const name of Object.keys(TOPICS)) {
+    pills.push({ label: name, type: "topic", value: TOPICS[name] });
+  }
+  el.innerHTML = pills.map(p => {
+    const on = active.has(feedKey(p.type, p.value));
+    return `<button class="pill ${on ? "on" : ""}" data-type="${p.type}" data-value="${escapeHtml(p.value)}" data-label="${escapeHtml(p.label)}">${escapeHtml(p.label)}</button>`;
+  }).join("");
+  el.querySelectorAll(".pill").forEach(btn => {
+    btn.addEventListener("click", () => toggleFeed(btn.dataset.type, btn.dataset.value, btn.dataset.label));
+  });
+}
+async function toggleFeed(type, value, label) {
+  const isOn = activeKeySet().has(feedKey(type, value));
+  try {
+    const res = await fetch(
+      `/api/google_news/feeds/${isOn ? "remove" : "add"}?` +
+      (isOn ? "" : `label=${encodeURIComponent(label)}&`) +
+      `feed_type=${encodeURIComponent(type)}&value=${encodeURIComponent(value)}`,
+      { method: "POST" }
+    );
+    const body = await res.json();
+    ACTIVE_FEEDS = body.feeds || [];
+    renderFeedPills();
+    setStatus(`${isOn ? "Removed" : "Added"} "${label}".`);
+  } catch (e) {
+    setStatus("Failed to update feed.", true);
+  }
+}
+async function loadFeeds() {
+  try {
+    const [topicsRes, feedsRes] = await Promise.all([
+      fetch("/api/google_news/topics"),
+      fetch("/api/google_news/feeds"),
+    ]);
+    TOPICS = (await topicsRes.json()).topics || {};
+    ACTIVE_FEEDS = (await feedsRes.json()).feeds || [];
+    renderFeedPills();
+  } catch (e) {
+    setStatus("Failed to load curated feeds — is the board running?", true);
+  }
+}
+
+loadKeywords();
+loadFeeds();
+</script>
+</body>
+</html>

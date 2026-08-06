@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The Dispatch — speaker daemon (scripts/dispatch_speak.py).
+
+  Polls /api/alerts (dispatch-alerts-v1) every 60s and speaks genuinely
+  important items via `say`. First run is silent (no backlog replay); quiet
+  hours 23:00-08:00; max 3 utterances per poll.
+
+  Install:   cp com.local.dispatch-speaker.plist ~/Library/LaunchAgents/
+             launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.local.dispatch-speaker.plist
+  Silence it: launchctl bootout gui/$(id -u)/com.local.dispatch-speaker
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.local.dispatch-speaker</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/PATH/TO/dispatch-public/.venv/bin/python</string>
+    <string>/PATH/TO/dispatch-public/scripts/dispatch_speak.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/PATH/TO/dispatch-public</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/dispatch-speaker.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/dispatch-speaker.err</string>
+</dict>
+</plist>

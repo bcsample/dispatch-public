@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The Dispatch — wall-display kiosk launcher.
+
+  Opens Chrome fullscreen (kiosk mode) on http://localhost:8808 at login, so
+  the board survives reboots with zero clicks. Uses its OWN Chrome profile
+  (~/.dispatch-kiosk) so the kiosk flags apply even when the main Chrome is
+  already running, and so the wall instance never touches the daily profile.
+
+  Install:   cp com.local.dispatch-kiosk.plist ~/Library/LaunchAgents/
+             launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.local.dispatch-kiosk.plist
+  Remove:    launchctl bootout gui/$(id -u)/com.local.dispatch-kiosk
+  Exit kiosk on-screen: Cmd+Q.
+
+  Display sleep: this agent does NOT change power settings. If the wall screen
+  sleeps, either set "Prevent automatic sleeping on power adapter" in System
+  Settings > Displays/Battery yourself, or run `caffeinate -d` alongside.
+
+  KeepAlive is off on purpose: quitting the kiosk (Cmd+Q) should stick until
+  the next login, not fight the user.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.local.dispatch-kiosk</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/open</string>
+    <string>-na</string>
+    <string>Google Chrome</string>
+    <string>--args</string>
+    <string>--user-data-dir=/Users/YOUR_USERNAME/.dispatch-kiosk</string>
+    <string>--kiosk</string>
+    <string>--no-first-run</string>
+    <string>--disable-session-crashed-bubble</string>
+    <string>http://localhost:8808/</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <false/>
+</dict>
+</plist>

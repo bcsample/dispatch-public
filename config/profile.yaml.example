@@ -1,0 +1,43 @@
+# Your interest profile — drives relevance scoring + the briefing voice.
+# Copy this file to profile.yaml (gitignored — it's yours, it never gets
+# committed) and edit the values below. No code changes needed.
+#
+# Everything here is an EXAMPLE. Replace it with whatever you actually care
+# about — a hobby, a local team, an industry, a technology. The shape (the
+# keys below) is what the code reads; the values are entirely up to you.
+
+honorific: Alex
+persona: >
+  Alex, a software engineer interested in artificial intelligence, open
+  source infrastructure, and the technology industry more broadly.
+
+# Named programs/entities to flag when the model sees them (passed to the
+# prompt, NOT deterministic scoring -- use this for names too generic to
+# keyword-match reliably on their own).
+flag_programs:
+  - Example Program Name
+
+primary_topics:
+  - artificial intelligence
+  - open source software
+  - cloud infrastructure
+  - startups
+
+watch_entities:
+  - Example Company
+  - Example Agency
+
+opportunity_keywords:
+  - machine learning
+  - developer tools
+  - infrastructure
+
+negative_keywords:
+  - sponsored
+  - webinar
+
+# Scoring/selection knobs
+min_score: 35          # an item must clear this to make the brief
+max_items_to_llm: 25   # only the top-N (already scored) go to the model
+recency_hours: 36      # "recent" bonus window
+world_severity_weight: 5   # World Delta: score += severity * this (quake mag, fire FRP, ...)

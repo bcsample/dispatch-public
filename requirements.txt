@@ -1,0 +1,21 @@
+feedparser
+pyyaml
+pytest
+requests
+fastapi
+uvicorn
+httpx
+# The Jarvis voice (brief/window/kokoro_tts.py): local neural TTS. Pinned to
+# 0.2.3 to match the voices.json weights shared with project-jarvis — newer
+# kokoro-onnx expects a different voices format. Optional at runtime: the
+# speaker falls back to macOS `say` if this isn't installed.
+kokoro-onnx==0.2.3
+# Calendar meeting check (brief/window/calendar_check.py): imports project-
+# jarvis's src/jarvis/google_sync.py directly (sys.path reuse of its already-
+# authorized, encrypted read-only Google Calendar tokens -- no separate OAuth
+# setup). Versions pinned to match project-jarvis's pyproject.toml exactly.
+# Optional at runtime: calendar_check fails soft to "no meeting" if missing.
+google-api-python-client==2.197.0
+google-auth-oauthlib==1.4.0
+google-auth-httplib2==0.4.0
+cryptography>=48.0.1

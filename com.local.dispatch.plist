@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Dispatch Open Window — the always-on live World Delta dashboard, at boot/login.
+     Install:
+       cp com.local.dispatch.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/com.local.dispatch.plist
+     http://127.0.0.1:8808/ (binds 0.0.0.0, so it's also reachable from other
+     devices on your network if you want that). Local-only, no cloud calls.
+     After editing brief/window code, pick it up with:
+       launchctl kickstart -k gui/$(id -u)/com.local.dispatch -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.local.dispatch</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/PATH/TO/dispatch-public/.venv/bin/python</string>
+        <string>-m</string>
+        <string>brief.window</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/PATH/TO/dispatch-public</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/dispatch.out</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/dispatch.err</string>
+</dict>
+</plist>

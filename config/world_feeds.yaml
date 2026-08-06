@@ -1,0 +1,58 @@
+# World Delta feeds — curated OSINT roster. Data, not code: add/remove/tune
+# freely, no pipeline changes needed. Each feed's `adapter` must match a key in
+# brief/ingest/world.py's ADAPTERS registry.
+#
+# min_severity: per-feed floor — a record below this is not even considered a
+# delta (keeps a global sea of magnitude-1 quakes from becoming noise).
+world_feeds:
+  - name: USGS Earthquakes
+    adapter: usgs_quakes
+    trust: high
+    min_severity: 4.5
+    # url: override the default all_day.geojson feed if needed
+
+  - name: NASA FIRMS Fires
+    adapter: nasa_firms
+    trust: medium
+    min_severity: 0
+    # NASA FIRMS requires a free MAP_KEY (https://firms.modaps.eosdis.nasa.gov/api/map_key/).
+    # Set it via the NASA_FIRMS_MAP_KEY environment variable — never in this file.
+    # If absent, this feed logs and is skipped; the rest of the sweep still runs.
+    area: world
+    product: VIIRS_SNPP_NRT
+    day_range: 1
+
+  - name: OFAC SDN Sanctions
+    adapter: ofac_sdn
+    trust: high
+    min_severity: 0
+    # Public download, no key required. Emits one delta per SDN entry (keyed
+    # by its stable ent_num): additions, removals, and edited entries.
+    # To disable: comment out or delete this entry — no code change needed.
+    # url: override the default SDN.CSV export location if needed
+
+  - name: CISA Exploited Vulns
+    adapter: cisa_kev
+    trust: high
+    min_severity: 0
+    # CISA Known Exploited Vulnerabilities catalog — free, no key. First sweep
+    # seeds the ~1.6k existing entries silently; after that, each newly-added
+    # CVE emits one "new" delta (an actively-exploited vuln). To disable:
+    # comment out or delete this entry — no code change needed.
+
+  - name: Flights — Watch Box
+    adapter: opensky_flights
+    trust: medium
+    min_severity: 0
+    # EDIT ME: set this bounding box to your actual watch-area. Example below
+    # is illustrative only (a box over the Alps/Switzerland region).
+    lamin: 45.0
+    lomin: 5.0
+    lamax: 48.0
+    lomax: 10.0
+    # OpenSky requires OAuth2 client-credentials. Export OPENSKY_CLIENT_ID /
+    # OPENSKY_CLIENT_SECRET (or OPENSKY_TOKEN_FILE pointing at a 0600 file
+    # holding a bearer token) — never in this file. Register a client at
+    # https://opensky-network.org/my-opensky/account. If creds are absent,
+    # this feed logs and is skipped; the rest of the sweep still runs.
+    # To disable: comment out or delete this entry — no code change needed.
