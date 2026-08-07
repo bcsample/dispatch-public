@@ -67,7 +67,8 @@ STATE_PATH = ROOT / "data" / "speaker_seen.json"
 MUTE_PATH = ROOT / "data" / "speaker_mute"
 # An external voice agent (if you run one) touches this while it's up and
 # speaking; we defer to it and resume automatically when it goes stale.
-JARVIS_CLAIM_PATH = ROOT / "data" / "voice_claim_external"
+# If you don't run one, this file never exists and the check is always False.
+VOICE_CLAIM_PATH = ROOT / "data" / "voice_claim_external"
 SEEN_CAP = 500
 
 
@@ -175,7 +176,7 @@ _DEFAULT_SILENT_KINDS = "news,surge"
 
 
 def _silent_kinds() -> frozenset:
-    raw = os.environ.get("JARVIS_DISPATCH_SILENT_KINDS", _DEFAULT_SILENT_KINDS)
+    raw = os.environ.get("DISPATCH_SILENT_KINDS", _DEFAULT_SILENT_KINDS)
     return frozenset(k.strip().lower() for k in raw.split(",") if k.strip())
 
 
@@ -331,7 +332,7 @@ def run_once(
             #
             # This speaker is one half of an optional handoff -- it reads the
             # board whenever an external voice agent (if you run one, see
-            # quiet.jarvis_has_voice) isn't holding the claim file. Getting this
+            # quiet.external_agent_has_voice) isn't holding the claim file. Getting this
             # right matters: fixing only one side would silence news exactly when
             # the other agent is running, or leave both talking over each other
             # when it isn't -- the harder bug to notice and the more annoying one
@@ -374,7 +375,7 @@ def run_once(
             MUTE_PATH,
             qs,
             qe,
-            jarvis_claim_path=JARVIS_CLAIM_PATH,
+            voice_claim_path=VOICE_CLAIM_PATH,
             weekdays_only=wd,
             respect_calendar=check_cal,
             respect_display_idle=check_idle,

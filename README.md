@@ -36,6 +36,20 @@ something useful with zero configuration; every feature beyond the free
 Google News feed is opt-in via an API key, a config value, or just leaving
 it turned off.
 
+## Requirements
+
+**Required:** Python 3.11+. That's it — Dispatch runs standalone, on its own,
+with no other services and no account of any kind.
+
+**Optional, each independently:** an [Ollama](https://ollama.ai) install for
+local headline ranking; a NewsAPI.ai key for extra sources; a NASA FIRMS key
+for wildfire tracking; OpenSky credentials for a higher flight-tracking rate
+limit; Kokoro TTS model weights for a neural voice (falls back to macOS `say`
+automatically without them); your own external calendar or voice-agent
+integration, if you build one, via the documented plugin points. Every one
+of these is off by default and the dashboard works fully without any of
+them.
+
 ## Quick start
 
 ```bash

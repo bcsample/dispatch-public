@@ -143,16 +143,16 @@ def calendar_meeting_active() -> bool:
 # --- 5. an external voice agent has the voice -----------------------------
 
 
-def jarvis_has_voice(claim_path: Path, max_age_seconds: float = 120) -> bool:
+def external_agent_has_voice(claim_path: Path, max_age_seconds: float = 120) -> bool:
     """True when an external voice agent is currently claiming the voice.
 
     An external voice agent (if you run one) may be intermittent -- not
     always up, and not something this speaker should fight with. The handoff
     is a heartbeat file: while that agent is up and speaking it touches
-    `claim_path` at least once a
-    minute; this light `say` speaker defers while that file is fresh and
-    automatically resumes when it goes stale. No ports, no coupling, survives
-    a restart on either side."""
+    `claim_path` at least once a minute; this light `say` speaker defers
+    while that file is fresh and automatically resumes when it goes stale.
+    No ports, no coupling, survives a restart on either side. If you don't
+    run any such agent, this is simply always False -- nothing to set up."""
     try:
         age = time.time() - claim_path.stat().st_mtime
         return age <= max_age_seconds
@@ -212,7 +212,7 @@ def quiet_reason(
     quiet_end: int = 8,
     respect_focus: bool = True,
     respect_mic: bool = True,
-    jarvis_claim_path: Path | None = None,
+    voice_claim_path: Path | None = None,
     weekdays_only: bool = False,
     respect_calendar: bool = True,
     respect_display_idle: bool = False,
@@ -227,7 +227,7 @@ def quiet_reason(
         return "Focus/Do Not Disturb is on"
     if respect_calendar and calendar_meeting_active():
         return "a calendar meeting is in progress"
-    if jarvis_claim_path is not None and jarvis_has_voice(jarvis_claim_path):
+    if voice_claim_path is not None and external_agent_has_voice(voice_claim_path):
         return "an external voice agent has the voice"
     if weekdays_only and now.weekday() >= 5:  # 5=Sat, 6=Sun
         return "weekend"

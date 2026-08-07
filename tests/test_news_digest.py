@@ -1,6 +1,6 @@
-"""GET /api/news/digest — the "one news brain" round-up project-jarvis's
-get_news/get_defense_news read on demand, instead of running their own
-separate, uncurated RSS pull. See brief/window/service.py::news_digest."""
+"""GET /api/news/digest — a pre-ranked round-up for on-demand voice/agent
+consumers to read instead of running their own separate, uncurated RSS
+pull. See brief/window/service.py::news_digest."""
 
 from __future__ import annotations
 

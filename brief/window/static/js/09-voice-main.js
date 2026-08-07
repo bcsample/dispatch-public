@@ -4,7 +4,7 @@
 // something speak-worthy is pending, dimmed + struck through when it can't
 // speak (meeting / Focus / muted / quiet hours) — with the reason on hover.
 function renderOrb(voice, alerts) {
-  const orb = document.getElementById("jarvisOrb");
+  const orb = document.getElementById("voiceOrb");
   const btn = document.getElementById("readNewsBtn");
   const label = document.getElementById("voiceLabel");
   if (!orb) return;

@@ -1,5 +1,5 @@
-"""Open Window (v1) tests — the status-endpoint shape (Engine Room's dial
-builds against this exact contract, plus the v1 feed-scope filter. Uses an empty world_feeds list
+"""Dashboard tests — the status-endpoint shape (any external monitoring tool
+would build against this exact contract), plus the feed-scope filter. Uses an empty world_feeds list
 when exercising the live FastAPI app so the sweep loop's real sweep is a
 network-free no-op, keeping these tests offline and deterministic.
 """

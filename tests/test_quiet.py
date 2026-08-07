@@ -219,12 +219,12 @@ def test_voice_endpoint_and_mute_button_round_trip(tmp_path, monkeypatch):
 # --- the external voice agent handoff -------------------------------------
 
 
-def test_jarvis_claim_defers_then_expires(tmp_path, monkeypatch):
-    claim = tmp_path / "voice_claim_jarvis"
-    assert quiet.jarvis_has_voice(claim) is False  # no claim -> we speak
+def test_external_agent_claim_defers_then_expires(tmp_path, monkeypatch):
+    claim = tmp_path / "voice_claim_external"
+    assert quiet.external_agent_has_voice(claim) is False  # no claim -> we speak
 
     claim.write_text("")  # external voice agent heartbeats
-    assert quiet.jarvis_has_voice(claim) is True
+    assert quiet.external_agent_has_voice(claim) is True
 
     # A stale heartbeat (the external agent died / was killed to protect a render) hands
     # the voice straight back to the light speaker.
@@ -232,15 +232,15 @@ def test_jarvis_claim_defers_then_expires(tmp_path, monkeypatch):
 
     old = time.time() - 300
     os.utime(claim, (old, old))
-    assert quiet.jarvis_has_voice(claim, max_age_seconds=120) is False
+    assert quiet.external_agent_has_voice(claim, max_age_seconds=120) is False
 
 
-def test_quiet_reason_defers_to_jarvis(tmp_path, monkeypatch):
+def test_quiet_reason_defers_to_external_agent(tmp_path, monkeypatch):
     monkeypatch.setattr(quiet, "mic_in_use", lambda: False)
     monkeypatch.setattr(quiet, "focus_active", lambda path=None: False)
-    claim = tmp_path / "voice_claim_jarvis"
+    claim = tmp_path / "voice_claim_external"
     claim.write_text("")
     reason = quiet.quiet_reason(
-        datetime(2026, 7, 20, 12, 0), tmp_path / "mute", jarvis_claim_path=claim
+        datetime(2026, 7, 20, 12, 0), tmp_path / "mute", voice_claim_path=claim
     )
     assert reason == "an external voice agent has the voice"

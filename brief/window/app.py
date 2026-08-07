@@ -260,12 +260,11 @@ def create_app(
 
     @app.get("/api/news/digest")
     def api_news_digest(kind: str = "world", limit: int = 6):
-        """A small, pre-ranked round-up for ON-DEMAND voice consumers (project-
-        jarvis's get_news/get_defense_news) — "one news brain": the same
-        curated pool the board uses, ranked server-side so any external voice
-        consumer stops running
-        its own separate, uncurated RSS pull for the same request. kind=world
-        (general) or kind=beat (the user's professional beat via curation)."""
+        """A small, pre-ranked round-up for ON-DEMAND voice/agent consumers —
+        "one news brain": the same curated pool the board uses, ranked
+        server-side, so a consumer never needs to run its own separate,
+        uncurated RSS pull for the same request. kind=world (general) or
+        kind=beat (the user's professional beat via curation)."""
         return {
             "kind": kind,
             "items": service.news_digest(

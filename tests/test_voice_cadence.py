@@ -142,7 +142,7 @@ def test_speaker_accumulates_between_slots_and_reads_a_bulletin(monkeypatch, tmp
     spoken: list[str] = []
     monkeypatch.setattr(sp, "speak", lambda t: spoken.append(t))
     monkeypatch.setattr(sp, "MUTE_PATH", tmp_path / "mute")
-    monkeypatch.setattr(sp, "JARVIS_CLAIM_PATH", tmp_path / "claim")
+    monkeypatch.setattr(sp, "VOICE_CLAIM_PATH", tmp_path / "claim")
     monkeypatch.setattr(sp, "_schedule", lambda: ([0, 30], 2))
     monkeypatch.setattr(sp.quiet, "mic_in_use", lambda: False)
     monkeypatch.setattr(sp.quiet, "focus_active", lambda path=None: False)
@@ -252,7 +252,7 @@ def test_bulletin_reads_the_biggest_three_not_first_arrived(monkeypatch, tmp_pat
     spoken: list[str] = []
     monkeypatch.setattr(sp, "speak", lambda t: spoken.append(t))
     monkeypatch.setattr(sp, "MUTE_PATH", tmp_path / "mute")
-    monkeypatch.setattr(sp, "JARVIS_CLAIM_PATH", tmp_path / "claim")
+    monkeypatch.setattr(sp, "VOICE_CLAIM_PATH", tmp_path / "claim")
     monkeypatch.setattr(sp, "_schedule", lambda: ([0, 30], 2))
     monkeypatch.setattr(sp.quiet, "mic_in_use", lambda: False)
     monkeypatch.setattr(sp.quiet, "focus_active", lambda path=None: False)
@@ -380,7 +380,7 @@ def test_bulletin_is_skipped_not_stacked_when_in_a_meeting(monkeypatch, tmp_path
     spoken: list[str] = []
     monkeypatch.setattr(sp, "speak", lambda t: spoken.append(t))
     monkeypatch.setattr(sp, "MUTE_PATH", tmp_path / "mute")
-    monkeypatch.setattr(sp, "JARVIS_CLAIM_PATH", tmp_path / "claim")
+    monkeypatch.setattr(sp, "VOICE_CLAIM_PATH", tmp_path / "claim")
     monkeypatch.setattr(sp, "_schedule", lambda: ([0, 30], 2))
     monkeypatch.setattr(sp.quiet, "mic_in_use", lambda: True)  # on a call
     monkeypatch.setattr(sp.quiet, "focus_active", lambda path=None: False)
@@ -400,11 +400,11 @@ def test_bulletin_is_skipped_not_stacked_when_in_a_meeting(monkeypatch, tmp_path
 #
 # The board mixes things that concern YOU (a delivery, a calendar collision) with
 # OSINT digest items -- kinds "news" and "surge". Only the former earns an
-# unprompted bulletin. The matching rule landed in project-jarvis's
-# dispatch_voice.plan_utterances the same day; this speaker is the OTHER half of
-# that handoff (it reads the board whenever an external voice agent isn't holding the
-# claim file), so fixing one side alone would have silenced news exactly while
-# the external agent was running and left it talking whenever it wasn't.
+# unprompted bulletin. This speaker is one half of an optional handoff (it
+# reads the board whenever an external voice agent isn't holding the claim
+# file, see quiet.external_agent_has_voice) -- getting this right matters:
+# fixing only one side would silence news exactly while the external agent
+# was running, or leave both talking over each other when it wasn't.
 
 
 def _silenced_fixture(monkeypatch, tmp_path, alerts):
@@ -412,7 +412,7 @@ def _silenced_fixture(monkeypatch, tmp_path, alerts):
     spoken: list[str] = []
     monkeypatch.setattr(sp, "speak", lambda t: spoken.append(t))
     monkeypatch.setattr(sp, "MUTE_PATH", tmp_path / "mute")
-    monkeypatch.setattr(sp, "JARVIS_CLAIM_PATH", tmp_path / "claim")
+    monkeypatch.setattr(sp, "VOICE_CLAIM_PATH", tmp_path / "claim")
     monkeypatch.setattr(sp, "_schedule", lambda: ([0, 30], 2))
     monkeypatch.setattr(sp.quiet, "mic_in_use", lambda: False)
     monkeypatch.setattr(sp.quiet, "focus_active", lambda path=None: False)
@@ -448,7 +448,7 @@ def test_a_non_news_alert_still_reaches_the_bulletin(monkeypatch, tmp_path):
 
 
 def test_silencing_is_env_overridable(monkeypatch, tmp_path):
-    monkeypatch.setenv("JARVIS_DISPATCH_SILENT_KINDS", "")
+    monkeypatch.setenv("DISPATCH_SILENT_KINDS", "")
     sp, spoken = _silenced_fixture(
         monkeypatch,
         tmp_path,

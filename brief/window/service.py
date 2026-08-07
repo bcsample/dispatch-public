@@ -793,7 +793,8 @@ def current_state(state: WindowState, limit: int = 200) -> list[dict]:
 
     Records are capped to `limit` per feed: the OFAC feed carries ~19k rows and
     the dashboard polls this every 10s, so an uncapped payload was ~2.9MB per
-    poll (unusable over Tailscale). `total` carries the TRUE count so the board
+    poll (too slow over anything but a fast local link). `total` carries the
+    TRUE count so the board
     still reads "19217 current" while only the top `limit` rows cross the wire
     (quakes are already floored/sorted well under the cap; sanctions show a
     count + this-sweep's additions, which the cap comfortably covers)."""

@@ -1,6 +1,6 @@
-"""Tests for brief.modelroles (Helm 2c: Engine Room model-role resolution).
-Ported from project-jarvis's test_modelroles.py — same contract, same
-fail-soft guarantees, env var names adapted to this repo (BRIEF_ENGINEROOM_*)."""
+"""Tests for brief.modelroles — optional model-role resolution against a
+local registry service. Entirely optional: with no registry configured or
+reachable, every call falls back to the caller's own hardcoded default."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def _fake_urlopen_returning(payload: dict):
     return _fake
 
 
-def test_resolve_returns_engine_room_model_on_success(monkeypatch):
+def test_resolve_returns_registry_model_on_success(monkeypatch):
     monkeypatch.setattr(
         modelroles.urllib.request, "urlopen",
         _fake_urlopen_returning({"role": "chat.small", "model": "qwen3.5:9b"}),
@@ -72,8 +72,9 @@ def test_resolve_caches_success_no_second_network_call(monkeypatch):
 
 
 def test_resolve_caches_fallback_too_no_repeated_timeouts(monkeypatch):
-    # The hard rule: Engine Room being down must never cost every subsequent
-    # call another network round-trip -- the fallback itself gets cached.
+    # The hard rule: an unreachable/unconfigured registry must never cost
+    # every subsequent call another network round-trip -- the fallback
+    # itself gets cached.
     calls = {"n": 0}
 
     def _raise(req, timeout=None):
@@ -119,6 +120,7 @@ def test_base_url_overridable_via_env(monkeypatch):
     assert modelroles._base_url() == "http://example.test:9999"
 
 
-def test_base_url_defaults_to_engine_room_tailnet_address(monkeypatch):
+def test_base_url_defaults_to_localhost(monkeypatch):
     monkeypatch.delenv("BRIEF_ENGINEROOM_URL", raising=False)
     assert modelroles._base_url() == modelroles._BASE_URL_DEFAULT
+    assert "localhost" in modelroles._BASE_URL_DEFAULT
