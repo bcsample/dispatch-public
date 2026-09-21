@@ -14,7 +14,7 @@ from _isolation import leftover_threads
 
 from brief import applog, config
 
-# --- Logging never reaches the live data/logs/ (, found 2026-09-14) ---------
+# --- Logging never reaches the live data/logs/ (T-48, found 2026-09-14) ---------
 # brief modules configure applog AT IMPORT, i.e. during collection, before any
 # fixture runs, so the test process's "brief" logger was attached to the LIVE
 # data/logs/brief.log. The full suite looked clean only by accident: test_applog
@@ -54,7 +54,7 @@ def conftest_log_dir() -> Path:
 
 @pytest.fixture(autouse=True)
 def _no_thread_outlives_its_test():
-    """HS-2 thread-lifetime audit ( shape, a sibling project 2026-09-11): isolation by
+    """HS-2 thread-lifetime audit (RA31 shape, a sibling project 2026-09-11): isolation by
     monkeypatch dies with the patch, so a thread still running after its test reads
     the RESTORED real paths (db.DATA_DIR, KEYWORDS_PATH, applog) and writes live
     data. `with TestClient(app)` starts the sweep/news/flight loops, whose stop()

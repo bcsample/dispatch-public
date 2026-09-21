@@ -1,4 +1,4 @@
-""": no test's log line can land in the live data/logs/ (see conftest.py).
+"""T-48: no test's log line can land in the live data/logs/ (see conftest.py).
 
 test_applog's teardown used to leave the "brief" logger with no handler at all,
 which is the accident that hid the leak from full-suite runs. It now restores
@@ -136,11 +136,11 @@ def test_the_handler_check_flags_a_handler_aimed_at_live_data():
     assert not live_path.exists()
 
 
-# --- fable #1657 item 4: importing a brief module must not OPEN the live log ------
+# --- architecture review #1657 item 4: importing a brief module must not OPEN the live log ------
 
 
 def test_importing_a_brief_module_does_not_open_a_handle_on_the_live_log():
-    """The sink property, asserted directly (): after a bare `import
+    """The sink property, asserted directly (T-52): after a bare `import
     brief.window.kokoro_tts` in a fresh interpreter -- no conftest, no test
     redirect, applog pointed at the operator's real data/logs/ -- applog's handler has
     NOT opened its file.
@@ -149,7 +149,7 @@ def test_importing_a_brief_module_does_not_open_a_handle_on_the_live_log():
     applog.get(__name__)` at module level -> applog.setup() at IMPORT). This is
     a birth test: run it against applog.py without delay=True and the handler's
     stream is an open file object on brief.log, so it fails. A handle is not a
-    written line, but  is the project's proof that a held handle on live
+    written line, but T-55 is the project's proof that a held handle on live
     data is its own hazard -- a rotation behind it and the engine writes to an
     unlinked inode.
 

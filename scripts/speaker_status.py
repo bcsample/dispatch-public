@@ -10,12 +10,12 @@ launchd's own row, because a stamp alone can outlive its process:
                                      is running pre-HS-5 code)
   * stamp pid != launchd pid      -> FAIL (stamp is from an earlier run)
   * last poll older than 3 polls  -> FAIL (alive pid, dead loop)
-  * stamp source_hash != disk now -> reported as source_stale true ( fingerprint,
+  * stamp source_hash != disk now -> reported as source_stale true (C77b fingerprint,
                                      HS-1; not a failure by itself). Unknown on either
                                      side reads `none`, never false. git_sha is shown
                                      as provenance only.
 
-launchctl list columns are TABS (, 2026-09-13: a space-separated grep matched
+launchctl list columns are TABS (T-51, 2026-09-13: a space-separated grep matched
 nothing, parsed an empty pid and printed STABLE). The row is found by exact label
 on a tab split, and an empty pid is a hard failure, never a match.
 Read-only: never starts, stops or signals anything.

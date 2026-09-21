@@ -1,4 +1,4 @@
-"""HS-1 + HS-4: the version surface and the  fingerprint on /api/health.
+"""HS-1 + HS-4: the version surface and the C77b fingerprint on /api/health.
 
 The W39 sha-proxy tests that used to live here asserted that moving HEAD under a
 running process reads stale. That was the retired behaviour (it fired on
@@ -127,14 +127,14 @@ def test_health_source_stale_false_after_a_docs_only_commit(spawned, client):
     assert body["source_stale"] is False  # ...the code did not
 
 
-# ---  (HS-1c): only runtime code moves the light ------------------------------
+# --- C77c (HS-1c): only runtime code moves the light ------------------------------
 
 
 @pytest.mark.parametrize("path", ["tests/test_a.py", "scripts/tool.py"])
 def test_health_source_stale_false_after_a_tests_or_tooling_only_commit(
     spawned, client, path
 ):
-    """DISPATCH'S  SPECIMEN (2026-09-14): HS-2's commit 81bb7ca touched only
+    """DISPATCH'S C77c SPECIMEN (2026-09-14): HS-2's commit 81bb7ca touched only
     tests/ and scripts/livedata_check.py, and both live processes read
     source_stale: true for 45 minutes on unchanged runtime code."""
     (spawned / path).write_text("changed = 2\n")
@@ -166,7 +166,7 @@ def test_fingerprint_is_none_if_the_entry_file_is_unreadable(spawned):
 def test_health_source_stale_true_after_an_editable_dependency_moves(
     tmp_path, monkeypatch, client
 ):
-    """ (morse #1253): a change in an editable dependency, with the repo itself
+    """C77b (morse #1253): a change in an editable dependency, with the repo itself
     untouched, must flip the light. Dispatch has no such dependency today; this
     plants one."""
     repo = _checkout(
@@ -208,7 +208,7 @@ def test_live_reading_is_cached_for_the_ttl(spawned, monkeypatch):
     assert version.live_fingerprint() != first  # TTL lapsed: re-read
 
 
-# --- process identity: pid | started_at | git_sha (fable #1394) ------------------
+# --- process identity: pid | started_at | git_sha (architecture review #1394) ------------------
 
 
 def test_health_publishes_the_process_identity_triple(spawned, client):

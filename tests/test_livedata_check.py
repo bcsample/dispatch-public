@@ -1,5 +1,5 @@
 """HS-2: the live-data guard (scripts/livedata_check.py), birth-tested on a tmp COPY
-of the live data (). The live tree is only READ (a SQLite backup through a
+of the live data (T-49). The live tree is only READ (a SQLite backup through a
 read-only connection, plain file copies); every plant lands in tmp_path.
 """
 
@@ -200,7 +200,7 @@ def test_sqlite_sidecars_are_excluded_from_file_hashes(tmp_path):
     assert list(lc.snapshot(tmp_path).files) == ["note.txt"]
 
 
-# --- needles and the  floor ---------------------------------------------------
+# --- needles and the T-51 floor ---------------------------------------------------
 
 
 def test_needles_include_test_fingerprints_and_exclude_real_errors():

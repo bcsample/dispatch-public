@@ -2,7 +2,7 @@
 service in the project bound to every interface (0.0.0.0) -- reachable
 from any device on the local wifi, not merely the private network, for a daily
 intel brief. Project convention: loopback bind + a `a private-network proxy`
-forwarder (as ComfyUI :8000, Studio :7861, overwatch :8900 do), never the
+forwarder (as ComfyUI :8000, Studio :7861, a sibling project :8900 do), never the
 private network interface and never a wildcard. This file exists because the
 failure mode IS the security property: the dangerous regression isn't "the
 board is unreachable", it's "the board silently went back to being

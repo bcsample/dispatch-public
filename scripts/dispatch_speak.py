@@ -98,7 +98,7 @@ def _utcnow_iso() -> str:
 def start_stamp(pid: int | None = None) -> dict:
     """What this process IS: written once at start, before the first poll, so
     a daemon that hangs on its first poll is still visible. `source_hash` is the
-     fingerprint captured at import (brief.version.STARTED_FP; HS-1) and is
+    C77b fingerprint captured at import (brief.version.STARTED_FP; HS-1) and is
     what staleness is judged on; `git_sha` is provenance only. None stays None,
     never a guess."""
     return {

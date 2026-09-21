@@ -87,7 +87,7 @@ _WINDOW_DEFAULTS = {
     # project bound to every interface: reachable from any device on the
     # LAN, not merely the private network, for a daily intel brief. DISPATCH_BIND_HOST
     # is a typed-out escape hatch (never arrived at by a failed lookup, same
-    # reasoning as overwatch's OVERWATCH_BIND).
+    # reasoning as a sibling project's OVERWATCH_BIND).
     "host": "127.0.0.1",
     "recent_deltas_limit": 200,
     "news_interval_seconds": 600,  # v2 — how often the news loop polls RSS

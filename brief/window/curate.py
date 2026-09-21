@@ -56,8 +56,7 @@ log = applog.get(__name__)
 DEFAULT_QUIET_START_HOUR = int(os.environ.get("CURATION_QUIET_START_HOUR", "18"))
 DEFAULT_QUIET_END_HOUR = int(os.environ.get("CURATION_QUIET_END_HOUR", "9"))
 
-# Helm 2c: CURATION_MODEL always wins outright if set (never even asks Engine
-# Room); otherwise resolve role "chat.small" (cached, falls back to the
+# Helm 2c: CURATION_MODEL always wins outright if set (never even asks the host monitor); otherwise resolve role "chat.small" (cached, falls back to the
 # qwen3.5:9b default below if the host monitor's unreachable).
 _MODEL_DEFAULT = "qwen3.5:9b"
 DEFAULT_MODEL = os.environ.get("CURATION_MODEL") or modelroles.resolve(

@@ -1,7 +1,7 @@
 """FastAPI app for the Open Window dashboard (v1 deltas/map + v2 current-state
 board and news panel).
 
-CORRECTED 2026-09-21 (fable #1657 item 2). This docstring used to claim: "LLM-free
+CORRECTED 2026-09-21 (architecture review #1657 item 2). This docstring used to claim: "LLM-free
 live path: this module and everything it imports (brief.window.*, brief.ingest.world,
 brief.ingest.rss, brief.db) never touch Ollama or brief/generate.py". That is false and
 has been since curation landed — this module imports .service, which imports .curate,
@@ -25,12 +25,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.staticfiles import StaticFiles
 
-from .. import version
+from .. import applog, version
 from . import dedup, service
+
+log = applog.get(__name__)
 
 _TEMPLATE_PATH = Path(__file__).parent / "templates" / "dashboard.html"
 _KEYWORDS_TEMPLATE_PATH = Path(__file__).parent / "templates" / "keywords.html"
@@ -258,7 +260,7 @@ def create_app(
         # W39 shape (architecture review ): which source this process actually
         # loaded, and whether disk has moved since. Deliberately not folded
         # into the ok/503 status -- a stale-but-running process is still
-        # answering, same reasoning as overwatch's own health endpoint.
+        # answering, same reasoning as a sibling project's own health endpoint.
         body = {"ok": ok, **detail, **version.source_state()}
         return JSONResponse(body, status_code=200 if ok else 503)
 
@@ -364,12 +366,32 @@ def create_app(
         }
 
     @app.post("/api/voice/mute")
-    def api_voice_mute(on: bool):
+    def api_voice_mute(on: bool, request: Request):
         """The board's mute button. Creates/removes the same data/speaker_mute
         file the speaker daemon honours, so the button and `touch`/`rm` are the
         one switch. Explicit on=true/false (not a toggle) so a double-click
-        can't race itself."""
+        can't race itself.
+
+        SEC-2 (2026-09-21): every flip is logged with its ORIGIN, at WARNING.
+
+        The wild specimen: on 2026-09-21 the mute came off between 01:01 and
+        09:44 and no log anywhere could say what moved it. The owner confirmed
+        it was him, so nothing was wrong -- but a switch guarded by a standing
+        absolute rule changed state and the record could not answer. That is the
+        defect, and it is a record defect, not an auth one. Filed separately
+        from the token gate (SEC-1) on purpose: the gate changes a surface he
+        uses from his phone and needs his word first, while this half needs
+        nobody's permission and is the half that actually answers the question.
+
+        Logged even when the state does not change, because "something pushed
+        mute=off while it was already off" is exactly the trace that
+        distinguishes a stuck client from a person. Never logs a token, a cookie
+        or a header value -- peer address and user-agent only.
+        """
         mute_path = service.db.DATA_DIR / "speaker_mute"
+        was = mute_path.exists()
+        client = request.client.host if request.client else "unknown"
+        agent = (request.headers.get("user-agent") or "unknown")[:120]
         try:
             if on:
                 mute_path.parent.mkdir(parents=True, exist_ok=True)
@@ -377,8 +399,25 @@ def create_app(
             else:
                 mute_path.unlink(missing_ok=True)
         except OSError as exc:
+            log.warning(
+                "VOICE MUTE flip FAILED: %s -> %s from %s (%s): %r",
+                "on" if was else "off",
+                "on" if on else "off",
+                client,
+                agent,
+                exc,
+            )
             return JSONResponse({"error": repr(exc)}, status_code=500)
-        return {"muted": mute_path.exists()}
+        now = mute_path.exists()
+        log.warning(
+            "VOICE MUTE %s: %s -> %s from %s (%s)",
+            "changed" if now != was else "re-asserted",
+            "on" if was else "off",
+            "on" if now else "off",
+            client,
+            agent,
+        )
+        return {"muted": now}
 
     @app.post("/api/voice/read_news")
     def api_voice_read_news():

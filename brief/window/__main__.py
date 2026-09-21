@@ -27,7 +27,7 @@ def main() -> None:
     window_cfg = config.load_window_config()
     app = create_app(world_feeds, window_cfg, news_sources=news_sources)
     # Typed-out escape hatch only -- never arrived at by a failed lookup
-    # (same reasoning as overwatch's OVERWATCH_BIND). config/window.yaml's
+    # (same reasoning as a sibling project's OVERWATCH_BIND). config/window.yaml's
     # own default is loopback; this just lets a deliberate operator choice
     # override it without editing YAML.
     host = os.environ.get("DISPATCH_BIND_HOST") or window_cfg.get("host", "127.0.0.1")

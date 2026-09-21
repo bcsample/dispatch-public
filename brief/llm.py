@@ -17,8 +17,7 @@ HOST = OLLAMA_HOST
 # for more reasoning horsepower when ComfyUI isn't loaded. qwen3.5:9b replaced
 # qwen2.5:7b as the default 2026-07-27 (the operator, via the voice assistant project: newer model,
 # tests better on 2026 tool-calling benchmarks at a similar footprint).
-# Helm 2c: BRIEF_MODEL always wins outright if set (never even asks Engine
-# Room); otherwise resolve role "chat.small" (cached, falls back to the
+# Helm 2c: BRIEF_MODEL always wins outright if set (never even asks the host monitor); otherwise resolve role "chat.small" (cached, falls back to the
 # qwen3.5:9b default below if the host monitor's unreachable).
 _MODEL_DEFAULT = "qwen3.5:9b"
 MODEL = os.environ.get("BRIEF_MODEL") or modelroles.resolve(

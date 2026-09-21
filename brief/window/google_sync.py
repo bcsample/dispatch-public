@@ -130,7 +130,7 @@ def _read_token_info(path: Path) -> dict | None:
 
 def authorize(label: str) -> str:
     """One-time browser consent for ONE account. Opens a local browser window;
-    run this on the same machine Dispatch runs on (Skynet). Run it once per
+    run this on the same machine Dispatch runs on (the host). Run it once per
     account -- the label is just the filename, so "work" and "personal" are
     fine."""
     from google_auth_oauthlib.flow import InstalledAppFlow

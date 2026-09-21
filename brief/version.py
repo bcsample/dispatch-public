@@ -9,7 +9,7 @@ changed, 2026-09-13) and `false` on a process started from a dirty tree.
 Three readings are CAPTURED AT IMPORT, by the process about to run the code, and
 never refreshed. That timing is the mechanism:
 
-- `STARTED_FP`: the  +  +  fingerprint (brief/runtime_stamp.py) of the
+- `STARTED_FP`: the C77 + C77b + C77c fingerprint (brief/runtime_stamp.py) of the
   declared RUNTIME code only: the tracked .py files under `RUNTIME_ROOTS` (`brief/`
   plus each editable dependency's package root) and the `RUNTIME_FILES` a live process
   runs from outside a package (`scripts/dispatch_speak.py`, the speaker's entry point).
@@ -24,7 +24,7 @@ never refreshed. That timing is the mechanism:
 Unknown is never false. `source_stale` is None whenever either fingerprint cannot
 be taken, and `source_hash` then reads "unverifiable". A False there would read as
 "verified fresh" on the host monitor's dial: the zero-versus-unknown collapse this
-project keeps re-finding (//).
+project keeps re-finding (C61/C68/C84).
 
 /api/health is polled continuously and the live hash costs a `git ls-files` plus a
 read of every tracked .py file, so the LIVE reading is cached for `_LIVE_TTL`
@@ -87,12 +87,12 @@ def read_version(path: Path | None = None) -> str | None:
 
 
 # Captured at import: what the running process actually loaded, and when.
-# pid | started_at | git_sha is the stale-runtime spec's identity triple (fable #1394).
+# pid | started_at | git_sha is the stale-runtime spec's identity triple (architecture review #1394).
 STARTED_AT = datetime.now(timezone.utc).isoformat(timespec="seconds")
 GIT_SHA = _read_head()
 VERSION = read_version()
 EDITABLE_ROOTS: list[Path] = runtime_stamp.editable_roots()
-# . The package comes FIRST: runtime_fingerprint requires the first root to hold
+# C77c. The package comes FIRST: runtime_fingerprint requires the first root to hold
 # tracked code. The speaker's entry script is a single file inside an otherwise
 # tooling directory, so it is declared as a file, not by hashing all of scripts/.
 RUNTIME_ROOTS: list[Path] = [_REPO / "brief", *EDITABLE_ROOTS]
@@ -155,8 +155,8 @@ def source_state() -> dict[str, object]:
         "head_sha": _read_head(),
         "source_hash": started if started is not None else "unverifiable",
         "source_stale": stale(started, live),
-        # : exactly what the fingerprint covers, so a reader sees what "stale"
-        # is about. editable_roots () is the subset from -e installs; empty today.
+        # C77c: exactly what the fingerprint covers, so a reader sees what "stale"
+        # is about. editable_roots (C77b) is the subset from -e installs; empty today.
         "runtime_roots": [str(r) for r in (*RUNTIME_ROOTS, *RUNTIME_FILES)],
         "editable_roots": [str(r) for r in EDITABLE_ROOTS],
     }

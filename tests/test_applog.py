@@ -27,7 +27,7 @@ def _reset_brief_logger():
         h.close()
     # Put back conftest's test-dir handler (monkeypatch has already restored
     # _LOG_DIR to it). Leaving NO handler here is what made full-suite runs look
-    # isolated while subset runs leaked into the live log (, 2026-09-14).
+    # isolated while subset runs leaked into the live log (T-48, 2026-09-14).
     applog._CONFIGURED = False
     applog.setup()
 
@@ -35,7 +35,7 @@ def _reset_brief_logger():
 def test_setup_creates_the_log_dir_and_the_file_appears_on_the_first_line(
     tmp_path, monkeypatch
 ):
-    """Amended 2026-09-21 (fable #1657 item 4). This used to assert the file
+    """Amended 2026-09-21 (architecture review #1657 item 4). This used to assert the file
     existed the moment `setup()` returned. That was asserting the
     implementation, not the property: with `delay=True` the handler resolves
     its path at construction and opens it on the first emit, which is the whole

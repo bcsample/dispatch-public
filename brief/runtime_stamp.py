@@ -1,7 +1,7 @@
-""" +  loaded-source fingerprint, VENDORED from overwatch W67
-(`overwatch/overwatch/runtime_stamp.py`, overwatch 6a57af9 = W67b, ), for
-dispatch HS-1 (fable #1014;  by #1365) and HS-1c (, fable #1400/#1412).
-Re-vendored 2026-09-14 when the drift test caught the donor moving to .
+"""C77 + C77b loaded-source fingerprint, VENDORED from a sibling project W67
+(`a sibling project/a sibling project/runtime_stamp.py`, a sibling project 6a57af9 = W67b, C77c), for
+dispatch HS-1 (architecture review #1014; C77b by #1365) and HS-1c (C77c, architecture review #1400/#1412).
+Re-vendored 2026-09-14 when the drift test caught the donor moving to C77c.
 
 Everything below the imports is the donor's code, unchanged; only this docstring
 is dispatch's. `tests/test_runtime_stamp.py` holds the copy to the donor function by
@@ -9,7 +9,7 @@ function (AST comparison) and requires both to hash this repo identically. It sk
 never passes, when the donor is not on disk, and repoints to the host monitor's
 `runtime_stamp.py` once that gains `editable_roots` (morse M67's shape).
 
-WHAT IT MEASURES (): the tracked .py files of each declared RUNTIME root, taken
+WHAT IT MEASURES (C77c): the tracked .py files of each declared RUNTIME root, taken
 at spawn and compared to disk now. Not the commit sha, and not tests/ or tooling.
 Dispatch's roots and its one runtime entry file are declared in brief/version.py.
 
@@ -20,7 +20,7 @@ docs had moved. Twice on 2026-09-08 the engine was restarted just to clear that 
 
 Every function returns None on ANY failure, never a guessed hash; None is what makes
 `source_hash: "unverifiable"` and `source_stale: null` reachable on /api/health.
-Dispatch has no editable dependency today (the roots list is empty), and the 
+Dispatch has no editable dependency today (the roots list is empty), and the C77b
 half is proven by a test that plants one.
 """
 
@@ -161,10 +161,10 @@ def editable_roots(site_dirs: list[Path] | None = None) -> list[Path]:
 
 
 def runtime_fingerprint(roots: list[Path]) -> str | None:
-    """ +  + : one hash over the tracked .py files of each RUNTIME root.
+    """C77 + C77b + C77c: one hash over the tracked .py files of each RUNTIME root.
 
-     (fable #1408, 2026-09-14): the roots are the package directories the live
-    process imports from -- `overwatch/` here -- plus each editable dependency's
+    C77c (architecture review #1408, 2026-09-14): the roots are the package directories the live
+    process imports from -- `a sibling project/` here -- plus each editable dependency's
     package root, NEVER the whole repo. Hashing the repo root made a tests-only or
     tools-only commit read `source_stale: true` on unchanged runtime code: dispatch's
     day-one cry-wolf case, and this repo's own the same morning (a printed message in

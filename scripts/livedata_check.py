@@ -1,4 +1,4 @@
-"""HS-2: does the test suite leave the operator's live data untouched? (, , , )
+"""HS-2: does the test suite leave the operator's live data untouched? (T-48, T-49, T-51, T-52)
 
 The live engine and speaker write `data/` continuously, so "nothing changed" is the
 wrong question. This asks two sharper ones over a window, and compares a window in
@@ -25,7 +25,7 @@ Usage:
   .venv/bin/python scripts/livedata_check.py run [--control SECONDS] -- <pytest args>
   .venv/bin/python scripts/livedata_check.py history
 Exit 0 = clean, 1 = a violation, 2 = the check could not run (empty or unreadable
-tree): a check that examined nothing did not pass (). It reads live data and
+tree): a check that examined nothing did not pass (T-51). It reads live data and
 writes nothing to data/; the pytest run it wraps is the only thing that could.
 """
 

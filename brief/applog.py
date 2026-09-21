@@ -58,11 +58,11 @@ def setup() -> None:
             backupCount=3,
             encoding="utf-8",
             # delay=True: open the file on the FIRST EMIT, not at construction
-            # (fable #1657 item 4, 2026-09-21). Module-level `log =
+            # (architecture review #1657 item 4, 2026-09-21). Module-level `log =
             # applog.get(__name__)` runs setup() at IMPORT, so without this any
             # ad-hoc `import brief.window.kokoro_tts` from a shell opened a
             # handle on the operator's live brief.log before a single line was logged.
-            #  says fix it at the sink; this is the sink.
+            # T-52 says fix it at the sink; this is the sink.
             delay=True,
         )
         handler.setFormatter(
