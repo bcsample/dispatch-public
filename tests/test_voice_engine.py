@@ -1,4 +1,4 @@
-"""The local neural voice (Kokoro) and its fail-soft fallback to macOS `say`.
+"""The Jarvis voice (Kokoro) and its fail-soft fallback to macOS `say`.
 
 The hard rule: a voice problem must never mute the wall. So kokoro_tts is
 fail-soft everywhere, and the speaker falls straight through to `say` when the
@@ -152,7 +152,9 @@ def test_speaker_falls_back_when_kokoro_render_fails(monkeypatch):
 # instead of paying Kokoro's render time again.
 
 
-def test_prerender_caches_and_speak_plays_it_without_rendering_again(monkeypatch, tmp_path):
+def test_prerender_caches_and_speak_plays_it_without_rendering_again(
+    monkeypatch, tmp_path
+):
     monkeypatch.setattr(kokoro_tts, "available", lambda: True)
     wav = tmp_path / "clip.wav"
     wav.write_bytes(b"RIFF....")

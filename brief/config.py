@@ -43,15 +43,7 @@ load_dotenv()
 
 
 def load_profile() -> dict:
-    """Your interests (config/profile.yaml, gitignored -- copy it from
-    profile.yaml.example and edit). Absent file -> {} (no profile, no
-    curation bias) rather than a crash, same "data file is optional"
-    pattern as the loaders below -- a fresh checkout should run before
-    you've set anything up, not demand it first."""
-    path = CONFIG_DIR / "profile.yaml"
-    if not path.exists():
-        return {}
-    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return yaml.safe_load((CONFIG_DIR / "profile.yaml").read_text(encoding="utf-8"))
 
 
 def load_sources() -> list[dict]:
@@ -60,8 +52,8 @@ def load_sources() -> list[dict]:
 
 
 def load_news_firehose() -> list[dict]:
-    """The dashboard's broad, window-specific news roster
-    (`config/news_firehose.yaml`).
+    """v3 — the Open Window's broad, window-specific news roster
+    (`config/news_firehose.yaml`, WORLD_DELTA_BUILD_PLAN.md's "v3" section).
     Same {name,type,trust,rss} schema as sources.yaml, deliberately a
     separate file so the curated AM digest (config/sources.yaml) is never
     touched. Falls back to load_sources() if the firehose file doesn't
@@ -90,11 +82,19 @@ def load_prompt(name: str) -> str:
 _WINDOW_DEFAULTS = {
     "sweep_interval_seconds": 900,
     "port": 8808,
-    "host": "0.0.0.0",
+    # Loopback + `a private-network proxy`, never 0.0.0.0 -- project bind convention
+    # (architecture review /#539, 2026-08-16). Dispatch was the ONLY service in the
+    # project bound to every interface: reachable from any device on the
+    # LAN, not merely the private network, for a daily intel brief. DISPATCH_BIND_HOST
+    # is a typed-out escape hatch (never arrived at by a failed lookup, same
+    # reasoning as overwatch's OVERWATCH_BIND).
+    "host": "127.0.0.1",
     "recent_deltas_limit": 200,
     "news_interval_seconds": 600,  # v2 — how often the news loop polls RSS
-    "recent_news_limit": 100,  # v2 — how many cached headlines /api/news returns by default
-    "news_window_hours": 2,  # v3 — /api/news only shows items published within this window
+    # v2 — how many cached headlines /api/news returns by default
+    "recent_news_limit": 100,
+    # v3 — /api/news only shows items published within this window
+    "news_window_hours": 2,
     # v4.1 — near-duplicate headline clustering via nomic-embed-text (Ollama).
     # Calibrated 2026-07-16: known-duplicate pairs measured 0.81-0.91 cosine
     # similarity, unrelated pairs measured 0.35-0.41 — 0.80 sits cleanly
@@ -105,8 +105,9 @@ _WINDOW_DEFAULTS = {
 
 
 def load_window_config() -> dict:
-    """Dashboard service config — sweep cadence, bind host/port. Data, not code:
-    an absent file or absent keys fall back to the documented defaults."""
+    """Open Window (v1) service config — sweep cadence, bind host/port (see
+    WORLD_DELTA_BUILD_PLAN.md's "Open Window (v1)" section). Data, not code:
+    an absent file or absent keys fall back to the documented v1 defaults."""
     path = CONFIG_DIR / "window.yaml"
     if not path.exists():
         return dict(_WINDOW_DEFAULTS)

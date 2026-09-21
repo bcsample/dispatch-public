@@ -8,7 +8,7 @@
 # Every entry below was fetch-tested with feedparser.parse() on 2026-07-16 and
 # returned real entries at the time of testing. Dead candidates (403s, 404s,
 # redirects to nowhere) were dropped rather than guessed at — see
-# 's v3 report for the full kept/dropped list.
+# WORLD_DELTA_BUILD_PLAN.md's v3 report for the full kept/dropped list.
 # Fail-soft: if a feed goes dark later, brief/ingest/rss.py already skips it
 # and logs, the rest of the firehose keeps flowing.
 sources:
@@ -79,7 +79,7 @@ sources:
     type: news
     trust: high
     rss: https://www.bellingcat.com/feed/
-  # Just Security removed 2026-07-28 (Fable's log-scan: 403 on every fetch,
+  # Just Security removed 2026-07-28 (the architecture review's log-scan: 403 on every fetch,
   # 978x) -- confirmed live still bot-walled (Cloudflare-style 403, no
   # User-Agent/re-auth fix available for a plain RSS feed). Was already known
   # bot-walled per an earlier session's source-health check; this just stops

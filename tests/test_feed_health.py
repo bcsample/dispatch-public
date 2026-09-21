@@ -77,7 +77,7 @@ def test_tracked_component_reports_error_after_failure_with_no_prior_success():
 
 
 def test_a_later_failure_does_not_erase_the_earlier_success_age():
-    # the user's rule (implicit): a component that WAS healthy an hour ago and
+    # the operator's rule (implicit): a component that WAS healthy an hour ago and
     # just failed reads by its last real success's age, not "just now" --
     # otherwise a failing feed would misleadingly look instantly fresh again
     # on its next (also failing) attempt.
@@ -114,12 +114,12 @@ def test_news_loop_records_rss_health_on_success_and_failure(monkeypatch):
         [{"name": "S", "rss": "http://x"}], state, interval_seconds=5
     )
 
-    monkeypatch.setattr(service.rss, "fetch_all", lambda sources: [])
+    monkeypatch.setattr(service.rss, "fetch_all", lambda sources, **k: [])
     loop.run_one_fetch()
     assert service.compute_feed_health(state)[0]["name"] == "RSS"
     assert service.compute_feed_health(state)[0]["bucket"] == "fresh"
 
-    def _raise(sources):
+    def _raise(sources, **k):
         raise RuntimeError("feed down")
 
     monkeypatch.setattr(service.rss, "fetch_all", _raise)
@@ -141,3 +141,143 @@ def test_flight_loop_records_health_on_success_and_none(monkeypatch):
     loop.run_one_fetch()
     feeds = {f["name"]: f for f in service.compute_feed_health(state)}
     assert feeds["Flights"]["bucket"] == "error"
+
+
+# --- N19: a failed fetch must record as failed, not healthy ------------------
+# Wild specimen (2026-09-12 17:43 -> 09-14 09:07, data/logs/brief.log): 38 straight
+#   ERROR brief.newsapi NewsAPI.ai fetch FAILED (HTTPError('403 Client Error:
+#   Forbidden for url: https://eventregistry.org/api/v1/article/getArticles'))
+# while /api/feed_health showed NewsAPI as "stale", never "error", because the
+# loop recorded ok=True whenever fetch returned (it always returns).
+
+
+def _http_403(*a, **k):
+    import requests
+
+    raise requests.HTTPError(
+        "403 Client Error: Forbidden for url: "
+        "https://eventregistry.org/api/v1/article/getArticles"
+    )
+
+
+def _loop(state, **kw):
+    return service.NewsLoop([], state, interval_seconds=5, dedup_enabled=False, **kw)
+
+
+def test_fetch_report_ok_rules():
+    from brief.ingest.report import FetchReport
+
+    assert FetchReport().ok  # nothing tried is not a failure
+    r = FetchReport()
+    r.attempt()
+    r.fail("x")
+    assert not r.ok and r.summary() == "1/1 failed: x"
+    partial = FetchReport()
+    for _ in range(3):
+        partial.attempt()
+    partial.fail("one of three")
+    assert partial.ok and partial.summary() is None
+
+
+def test_newsapi_403_records_error_not_healthy(monkeypatch):
+    monkeypatch.setattr(service.newsapi.requests, "post", _http_403)
+    monkeypatch.setattr(service.newsapi, "api_key", lambda: "k")
+    monkeypatch.setattr(service.rss, "fetch_all", lambda s, **k: [])
+    state = service.WindowState(sweep_interval_seconds=900)
+    _loop(state, newsapi_enabled=True).run_one_fetch()
+    feeds = {f["name"]: f for f in service.compute_feed_health(state)}
+    assert feeds["NewsAPI"]["bucket"] == "error"
+    assert "403" in state.feed_health_snapshot()["NewsAPI"]["error"]
+
+
+def test_newsapi_error_payload_records_error(monkeypatch):
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"error": "quota exceeded"}
+
+    monkeypatch.setattr(service.newsapi.requests, "post", lambda *a, **k: _Resp())
+    monkeypatch.setattr(service.newsapi, "api_key", lambda: "k")
+    monkeypatch.setattr(service.rss, "fetch_all", lambda s, **k: [])
+    state = service.WindowState(sweep_interval_seconds=900)
+    _loop(state, newsapi_enabled=True).run_one_fetch()
+    assert "quota" in state.feed_health_snapshot()["NewsAPI"]["error"]
+
+
+def test_gdelt_non_ratelimit_failure_records_error(monkeypatch):
+    def boom(*a, **k):
+        raise ConnectionError("gdelt down")
+
+    monkeypatch.setattr(service.gdelt.requests, "get", boom)
+    monkeypatch.setattr(service.rss, "fetch_all", lambda s, **k: [])
+    state = service.WindowState(sweep_interval_seconds=900)
+    _loop(state, gdelt_enabled=True).run_one_fetch()
+    feeds = {f["name"]: f for f in service.compute_feed_health(state)}
+    assert feeds["GDELT"]["bucket"] == "error"
+
+
+def test_google_news_all_requests_failing_records_error(monkeypatch):
+    monkeypatch.setattr(service.googlenews.requests, "get", _http_403)
+    monkeypatch.setattr(service.googlenews, "load_keywords", lambda: ["a", "b"])
+    monkeypatch.setattr(service.googlenews, "load_feeds", lambda: [])
+    monkeypatch.setattr(service.rss, "fetch_all", lambda s, **k: [])
+    state = service.WindowState(sweep_interval_seconds=900)
+    _loop(state, googlenews_enabled=True).run_one_fetch()
+    feeds = {f["name"]: f for f in service.compute_feed_health(state)}
+    assert feeds["Google News"]["bucket"] == "error"
+    assert state.feed_health_snapshot()["Google News"]["error"].startswith("2/2")
+
+
+def test_google_news_partial_failure_still_delivering_is_healthy(monkeypatch):
+    class _Resp:
+        content = b"<rss><channel><item><title>T - O</title><link>http://x/1</link></item></channel></rss>"
+
+        def raise_for_status(self):
+            pass
+
+    calls = iter([_http_403, lambda *a, **k: _Resp()])
+    monkeypatch.setattr(
+        service.googlenews.requests, "get", lambda *a, **k: next(calls)(*a, **k)
+    )
+    monkeypatch.setattr(service.googlenews, "load_keywords", lambda: ["a", "b"])
+    monkeypatch.setattr(service.googlenews, "load_feeds", lambda: [])
+    monkeypatch.setattr(service.rss, "fetch_all", lambda s, **k: [])
+    state = service.WindowState(sweep_interval_seconds=900)
+    _loop(state, googlenews_enabled=True).run_one_fetch()
+    feeds = {f["name"]: f for f in service.compute_feed_health(state)}
+    assert feeds["Google News"]["bucket"] == "fresh"
+
+
+def test_rss_roster_entirely_down_records_error_partial_is_healthy(monkeypatch):
+    from brief.ingest import rss
+
+    def by_name(source, max_entries=30):
+        if source["name"].startswith("dead"):
+            raise ConnectionError(source["name"])
+        return []
+
+    monkeypatch.setattr(rss, "fetch_source", by_name)
+    all_dead = [
+        {"name": "dead1", "rss": "http://d/1"},
+        {"name": "dead2", "rss": "http://d/2"},
+    ]
+    state = service.WindowState(sweep_interval_seconds=900)
+    service.NewsLoop(
+        all_dead, state, interval_seconds=5, dedup_enabled=False
+    ).run_one_fetch()
+    feeds = {f["name"]: f for f in service.compute_feed_health(state)}
+    assert feeds["RSS"]["bucket"] == "error"
+    assert state.feed_health_snapshot()["RSS"]["error"].startswith("2/2 failed: dead1")
+
+    mixed = [
+        {"name": "dead1", "rss": "http://d/1"},
+        {"name": "alive", "rss": "http://a/1"},
+    ]
+    state = service.WindowState(sweep_interval_seconds=900)
+    service.NewsLoop(
+        mixed, state, interval_seconds=5, dedup_enabled=False
+    ).run_one_fetch()
+    feeds = {f["name"]: f for f in service.compute_feed_health(state)}
+    assert feeds["RSS"]["bucket"] == "fresh"

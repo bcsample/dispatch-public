@@ -1,4 +1,4 @@
-"""GET /api/news/search — "read me the top news on <query>" (the user,
+"""GET /api/news/search — "read me the top news on <query>" (the operator,
 2026-07-28: "just a top news, reader"), LIVE on-demand Google News RSS
 search, distinct from /api/news/digest's pre-curated board pool. See
 brief/window/service.py::news_search."""
@@ -33,7 +33,9 @@ def test_news_search_returns_items_for_the_query(monkeypatch):
     monkeypatch.setattr(service.googlenews, "fetch", fake_fetch)
     got = service.news_search("Pentagon")
     assert seen["keywords"] == ["Pentagon"]
-    assert seen["include_feeds"] is False  # a curated feed-section pull would be wrong here
+    assert (
+        seen["include_feeds"] is False
+    )  # a curated feed-section pull would be wrong here
     assert got == [
         {
             "title": "Pentagon awards new contract",
@@ -60,7 +62,9 @@ def test_news_search_excludes_noise_and_non_latin_titles(monkeypatch):
         _item("Company wins defense contract"),  # keeper
     ]
     monkeypatch.setattr(
-        service.googlenews, "fetch", lambda keywords, count_per_keyword, include_feeds: items
+        service.googlenews,
+        "fetch",
+        lambda keywords, count_per_keyword, include_feeds: items,
     )
     got = service.news_search("Company")
     assert [h["title"] for h in got] == ["Company wins defense contract"]
@@ -69,7 +73,9 @@ def test_news_search_excludes_noise_and_non_latin_titles(monkeypatch):
 def test_news_search_respects_limit(monkeypatch):
     items = [_item(f"Story {i}", url=f"http://x/{i}") for i in range(10)]
     monkeypatch.setattr(
-        service.googlenews, "fetch", lambda keywords, count_per_keyword, include_feeds: items
+        service.googlenews,
+        "fetch",
+        lambda keywords, count_per_keyword, include_feeds: items,
     )
     got = service.news_search("Company", limit=3)
     assert len(got) == 3
@@ -80,7 +86,11 @@ def test_api_news_search_endpoint(monkeypatch):
         service.googlenews,
         "fetch",
         lambda keywords, count_per_keyword, include_feeds: [
-            _item("Palantir wins new contract", source_name="Defense News", url="http://x/1")
+            _item(
+                "Palantir wins new contract",
+                source_name="Defense News",
+                url="http://x/1",
+            )
         ],
     )
     app = create_app(

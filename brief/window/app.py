@@ -1,10 +1,20 @@
 """FastAPI app for the Open Window dashboard (v1 deltas/map + v2 current-state
 board and news panel).
 
-LLM-free live path: this module and everything it imports (brief.window.*,
-brief.ingest.world, brief.ingest.rss, brief.db) never touch Ollama or
-brief/generate.py — the window renders structured data only. See
-'s "Iron rule: the live path is LLM-free".
+CORRECTED 2026-09-21 (fable #1657 item 2). This docstring used to claim: "LLM-free
+live path: this module and everything it imports (brief.window.*, brief.ingest.world,
+brief.ingest.rss, brief.db) never touch Ollama or brief/generate.py". That is false and
+has been since curation landed — this module imports .service, which imports .curate,
+which POSTs headlines to a local Ollama model (curate.py:44,158) when
+config/window.yaml `curation_enabled` is true. It is true today.
+
+What the iron rule actually protects, and what still holds:
+  * no CLOUD model is ever called on the live path — curation is local Ollama only;
+  * RENDERING takes no model: the board draws from the DB, so a dead Ollama
+    degrades scoring, it does not blank the wall;
+  * renders are sacred — curation is skipped entirely while ComfyUI is working
+    (curate.comfyui_busy), because the box is the operator's.
+See WORLD_DELTA_BUILD_PLAN.md's "Iron rule" section, read with this correction.
 """
 
 from __future__ import annotations
@@ -12,12 +22,14 @@ from __future__ import annotations
 import re
 import threading
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.staticfiles import StaticFiles
 
+from .. import version
 from . import dedup, service
 
 _TEMPLATE_PATH = Path(__file__).parent / "templates" / "dashboard.html"
@@ -68,7 +80,7 @@ def _speak_news_lines(
     when done, success or not.
 
     Leads with an instant `say`-engine acknowledgement (forced, regardless of
-    the configured engine) before the actual digest -- the user: "I would even
+    the configured engine) before the actual digest -- the operator: "I would even
     be ok with an instant 'sir let me curate and fetch it' so I knew it was
     received." A cold Kokoro model load can take real time; macOS `say` has
     none, so the click never sits in silence wondering if it registered."""
@@ -118,10 +130,20 @@ def create_app(
     speak_kokoro_lang = str(window_cfg.get("speak_kokoro_lang", "en-gb"))
     speak_kokoro_speed = float(window_cfg.get("speak_kokoro_speed", 1.0))
     curation_enabled = bool(window_cfg.get("curation_enabled", False))
-    curation_model = str(window_cfg.get("curation_model", "qwen3.5:9b"))
+    # The default RESOLVES a role (the host monitor's `chat.small`) rather than
+    # naming a tag. It used to be the bare literal "qwen3.5:9b" in both places
+    # -- here and window.yaml -- so when that model was renamed with the -er16k
+    # context suffix, every curation call 404'd, curate() swallowed it by
+    # design, and the beat digest returned [] forever while the board still
+    # looked healthy. A role survives a rename; a literal does not.
+    curation_model = str(
+        window_cfg.get("curation_model") or service.curate.DEFAULT_MODEL
+    )
     curation_min_score = int(window_cfg.get("curation_min_score", 8))
     curation_quiet_start_hour = int(
-        window_cfg.get("curation_quiet_start_hour", service.curate.DEFAULT_QUIET_START_HOUR)
+        window_cfg.get(
+            "curation_quiet_start_hour", service.curate.DEFAULT_QUIET_START_HOUR
+        )
     )
     curation_quiet_end_hour = int(
         window_cfg.get("curation_quiet_end_hour", service.curate.DEFAULT_QUIET_END_HOUR)
@@ -204,7 +226,7 @@ def create_app(
     # v3 — serves brief/window/static/ne_110m_land.json (bundled Natural Earth
     # land polygons) at /static/ne_110m_land.json. No new dep: starlette ships
     # with FastAPI. The dashboard fetches this ONCE on page load, never on the
-    # 10s poll, V3.1).
+    # 10s poll (see WORLD_DELTA_BUILD_PLAN.md's "v3" section, V3.1).
     if _STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
@@ -220,6 +242,7 @@ def create_app(
         if request.url.path.startswith("/static/"):
             response.headers["Cache-Control"] = "no-cache"
         return response
+
     app.state.window_state = state
     app.state.sweep_loop = loop
     app.state.news_loop = news_loop
@@ -232,7 +255,11 @@ def create_app(
     @app.get("/api/health")
     def api_health():
         ok, detail = service.check_health(loop, news_loop, flight_loop)
-        body = {"ok": ok, **detail}
+        # W39 shape (architecture review ): which source this process actually
+        # loaded, and whether disk has moved since. Deliberately not folded
+        # into the ok/503 status -- a stale-but-running process is still
+        # answering, same reasoning as overwatch's own health endpoint.
+        body = {"ok": ok, **detail, **version.source_state()}
         return JSONResponse(body, status_code=200 if ok else 503)
 
     @app.get("/api/status")
@@ -260,11 +287,11 @@ def create_app(
 
     @app.get("/api/news/digest")
     def api_news_digest(kind: str = "world", limit: int = 6):
-        """A small, pre-ranked round-up for ON-DEMAND voice/agent consumers —
-        "one news brain": the same curated pool the board uses, ranked
-        server-side, so a consumer never needs to run its own separate,
-        uncurated RSS pull for the same request. kind=world (general) or
-        kind=beat (the user's professional beat via curation)."""
+        """A small, pre-ranked round-up for ON-DEMAND voice consumers (project-
+        jarvis's get_news/get_defense_news) — "one news brain": the same
+        curated pool the board uses, ranked server-side so Jarvis stops running
+        its own separate, uncurated RSS pull for the same request. kind=world
+        (general) or kind=beat (the operator's professional beat via curation)."""
         return {
             "kind": kind,
             "items": service.news_digest(
@@ -274,7 +301,7 @@ def create_app(
 
     @app.get("/api/news/search")
     def api_news_search(q: str = "", limit: int = 5):
-        """"Read me the top news on <query>" — LIVE on-demand search (the user,
+        """ "Read me the top news on <query>" — LIVE on-demand search (the operator,
         2026-07-28: "just a top news, reader"), distinct from /api/news/digest's
         pre-curated pool. See service.news_search for why this can't reuse
         that cache (an arbitrary query is never already sitting in it)."""
@@ -298,7 +325,7 @@ def create_app(
     @app.get("/api/alerts")
     def api_alerts(since: str | None = None):
         """dispatch-alerts-v1 — the live 'really important things' feed for
-        voice consumers. Deterministic and LLM-free; see
+        voice consumers (Jarvis). Deterministic and LLM-free; see
         service.build_alerts for the significance rules."""
         return service.build_alerts(
             state,
@@ -316,11 +343,9 @@ def create_app(
     @app.get("/api/voice")
     def api_voice():
         """Is the voice live right now, and if not, why? Drives the board's
-        voice orb and mute button, so the wall never implies it's listening
+        Jarvis orb and mute button, so the wall never implies it's listening
         when it's muted. `muted` is the MANUAL switch specifically (the button
         toggles that); `reason` covers every cause including meetings."""
-        from datetime import datetime
-
         from . import quiet as quiet_mod
 
         mute_path = service.db.DATA_DIR / "speaker_mute"
@@ -357,21 +382,21 @@ def create_app(
 
     @app.post("/api/voice/read_news")
     def api_voice_read_news():
-        """The board's on-demand "read the news" button (the user: a small
-        voice orb the user clicks at their desk) -- speaks a short round-up in
-        the local voice RIGHT NOW instead of waiting for the next scheduled
+        """The board's on-demand "read the news" button (the operator: a small
+        Jarvis orb he clicks at his desk) -- speaks a short round-up in the
+        Jarvis voice RIGHT NOW instead of waiting for the next scheduled
         bulletin.
 
         Respects mute / mic-in-use / Focus / quiet hours / weekdays -- an
         earlier version let this override manual mute ("he clicked, he means
-        it") and that was wrong: the user hit mute mid-call and it spoke anyway.
-        Mute and mic-in-use are direct signals you're actually unavailable
+        it") and that was wrong: the operator hit mute mid-call and it spoke anyway.
+        Mute and mic-in-use are direct signals he's actually unavailable
         RIGHT NOW; there's no overriding those, full stop.
 
         The ONE gate this explicitly does NOT check: the calendar-meeting
-        signal (the user, 2026-07-21: "I'm OK with a calendar hold, but if I
+        signal (the operator, 2026-07-21: "I'm OK with a calendar hold, but if I
         click the button manually.. I'd like it to read the news"). Unlike
-        mute/mic-in-use, a calendar hold is only a PREDICTION you're busy, not
+        mute/mic-in-use, a calendar hold is only a PREDICTION he's busy, not
         evidence he actually is -- an explicit click is stronger, more direct
         evidence than a calendar guess, so it wins. The scheduled bulletin
         still respects the calendar signal (respect_calendar=speak_check_
@@ -380,8 +405,6 @@ def create_app(
         Speaking runs in a background thread so this request returns
         instantly; the board's 10s poll must never stall for the ~60s of
         audio playback."""
-        from datetime import datetime
-
         from . import quiet as quiet_mod
 
         mute_path = service.db.DATA_DIR / "speaker_mute"
@@ -422,7 +445,7 @@ def create_app(
 
     # --- Google News RSS keyword management (free NewsAPI.ai replacement) --
     # Not on the wall board itself (that's meant to be glanceable/hands-off);
-    # a small standalone page the user visits occasionally from their own machine
+    # a small standalone page the operator visits occasionally from his own machine
     # to add/remove beat terms. Edits are picked up by the NEXT news-loop
     # cycle with no restart (googlenews.fetch() reads the file fresh).
 
@@ -445,7 +468,7 @@ def create_app(
     @app.get("/api/google_news/topics")
     def api_google_news_topics():
         """Preset topic-section names -> tokens, for the feeds page's picker
-        -- so the user never has to hunt down Google's opaque topic tokens."""
+        -- so the operator never has to hunt down Google's opaque topic tokens."""
         return {"topics": service.googlenews.TOPIC_TOKENS}
 
     @app.post("/api/google_news/feeds/add")

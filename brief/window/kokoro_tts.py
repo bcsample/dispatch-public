@@ -1,13 +1,13 @@
-"""The Dispatch voice: local neural TTS via Kokoro (ONNX).
+"""The Jarvis voice for the Dispatch: local neural TTS via Kokoro (ONNX).
 
-Fully local -- nothing spoken here leaves the machine. Default voice is
-`bm_george` (British male, en-gb); see speak_kokoro_voice in
-config/window.yaml for the full option list Kokoro ships.
+the operator's rule for the voice was "use the jarvis voice" — the voice assistant project speaks
+with Kokoro `bm_george` (British male, en-gb), a fully LOCAL neural model, and
+so does a sibling project. This is the ecosystem's shared voice; nothing leaves the Mac.
 
-The model weights (~340MB) are NOT bundled in this repo -- download them
-once and point DISPATCH_KOKORO_DIR at the folder (defaults to ./models/kokoro
-in this repo). The model is CPU/RAM only (~400MB resident once loaded), no
-GPU required.
+We reuse the model weights that already live in the voice assistant project
+(models/kokoro/) rather than duplicating 340MB — the path is overridable via
+DISPATCH_KOKORO_DIR. The model is CPU/RAM only (~400MB resident once loaded),
+so it never competes with ComfyUI for GPU memory.
 
 EVERYTHING here is fail-soft: if the library or the weights are missing, if a
 render throws, if playback fails — `speak()` returns False and the caller
@@ -27,12 +27,12 @@ from .. import applog
 
 log = applog.get(__name__)
 
-# See module docstring -- weights aren't bundled, this is just where to look
-# for them by default. Override with DISPATCH_KOKORO_DIR.
+# Shared weights from the voice assistant project by default (no 340MB duplicate). Override
+# with DISPATCH_KOKORO_DIR to point somewhere self-contained.
 KOKORO_DIR = Path(
     os.environ.get(
         "DISPATCH_KOKORO_DIR",
-        str(Path(__file__).resolve().parents[2] / "models" / "kokoro"),
+        str(Path.home() / "AI/experiments/the voice assistant project/models/kokoro"),
     )
 )
 _MODEL = KOKORO_DIR / "kokoro-v0_19.onnx"
@@ -85,9 +85,7 @@ def _engine():
         return None
 
 
-def _render_to_wav(
-    text: str, voice: str, lang: str, speed: float
-) -> str | None:
+def _render_to_wav(text: str, voice: str, lang: str, speed: float) -> str | None:
     """Synthesize `text` and write it to a fresh temp WAV file, returning its
     path (caller owns cleanup) or None on any failure. The one place that
     actually calls into the Kokoro model — shared by prerender() and the
@@ -189,7 +187,7 @@ def speak_or_say(
     say_voice: str = "Daniel",
     say_rate: int = 172,
 ) -> None:
-    """Say `text` aloud, preferring the local neural voice and falling back to macOS
+    """Say `text` aloud, preferring the Jarvis voice and falling back to macOS
     `say` on any failure — the ONE code path shared by every voice consumer
     (the scheduled speaker daemon, scripts/dispatch_speak.py, AND the board's
     on-demand "read the news" button) so the fallback rule can't drift between

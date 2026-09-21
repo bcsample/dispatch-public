@@ -3,7 +3,7 @@ Each stage is a separate, swappable function — new sources plug in here withou
 disturbing the rest.
 
 Delivery was retired per the Dispatch Integration decision (README § Dispatch
-Integration, Fable ADR 2026-07-16): the Apps Script Morning Digest owns email
+Integration, architecture review ADR 2026-07-16): the Apps Script Morning Digest owns email
 permanently, and this batch pipeline is an on-demand deep-dive tool — never
 scheduled, never mailing anything."""
 
@@ -44,11 +44,14 @@ def run_daily_brief() -> dict:
 
     selected = score.select(fresh, profile)
     print(
-        f"  → {len(selected)} cleared score ≥ {profile.get('min_score')} (top {profile.get('max_items_to_llm')})"
+        f"  → {len(selected)} cleared score ≥ {profile.get('min_score')} "
+        f"(top {profile.get('max_items_to_llm')})"
     )
     log.info(
         "%d cleared score >= %s (top %s)",
-        len(selected), profile.get("min_score"), profile.get("max_items_to_llm"),
+        len(selected),
+        profile.get("min_score"),
+        profile.get("max_items_to_llm"),
     )
 
     print(f"Generating brief with the local model ({generate.llm.MODEL})…")

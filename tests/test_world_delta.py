@@ -222,16 +222,19 @@ def test_parse_firms_csv_fixture():
 # Vess_flag, Vess_owner, Remarks), "-0- " as the empty-field placeholder.
 # ---------------------------------------------------------------------------
 
+# The two SDN fixtures below are transcribed rows from OFAC's real SDN.CSV, not
+# invented ones, and their exact bytes ARE the specimen -- wrapping them to
+# satisfy E501 would edit the evidence. Suppressed per line, not repo-wide.
 _SDN_FIXTURE_V1 = (
     '36,"AEROCARIBBEAN AIRLINES",-0- ,"CUBA",-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- \n'
-    '2674,"ABBAS, Abu","individual","SDGT","Director of PLF",-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,'
+    '2674,"ABBAS, Abu","individual","SDGT","Director of PLF",-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,'  # noqa: E501
     '"DOB 10 Dec 1948."\n'
 )
 
 # eq: entry 36 unchanged, entry 2674 gets its remarks updated, entry 906 is new.
 _SDN_FIXTURE_V2 = (
     '36,"AEROCARIBBEAN AIRLINES",-0- ,"CUBA",-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- \n'
-    '2674,"ABBAS, Abu","individual","SDGT","Director of PLF",-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,'
+    '2674,"ABBAS, Abu","individual","SDGT","Director of PLF",-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,'  # noqa: E501
     '"DOB 10 Dec 1948; deceased."\n'
     '906,"HAVIN BANK LIMITED",-0- ,"CUBA",-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,-0- ,'
     '"SWIFT/BIC HAVIGB2L."\n'
@@ -347,13 +350,13 @@ def test_opensky_flights_raises_without_credentials(monkeypatch):
         world.opensky_flights(
             {"name": "Flights", "lamin": 0, "lomin": 0, "lamax": 1, "lomax": 1}
         )
-        assert False, "expected RuntimeError for missing OpenSky credentials"
+        raise AssertionError("expected RuntimeError for missing OpenSky credentials")
     except RuntimeError as exc:
         assert "OPENSKY_CLIENT_ID" in str(exc) or "OPENSKY_TOKEN_FILE" in str(exc)
 
 
 # ---------------------------------------------------------------------------
-# v2 — fetch_all's `current` out-param (, "v2"
+# v2 — fetch_all's `current` out-param (WORLD_DELTA_BUILD_PLAN.md, "v2"
 # section, V2.1). Mirrors the existing additive `stats` param: default None,
 # byte-identical behavior/return value for callers that don't pass it.
 # ---------------------------------------------------------------------------

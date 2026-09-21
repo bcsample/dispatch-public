@@ -12,14 +12,18 @@ from . import modelroles
 from .config import OLLAMA_HOST
 
 HOST = OLLAMA_HOST
-# Light by default (~6.6GB) so this plays nicely alongside other local models
-# or GPU-heavy apps you might be running. Set BRIEF_MODEL to any Ollama model
-# name you have pulled for more reasoning horsepower.
-# BRIEF_MODEL always wins outright if set (never even asks a model registry);
-# otherwise resolve role "chat.small" via modelroles (optional -- falls back
-# to the default below if none is configured).
+# Light by default (~6.6GB) so the brief doesn't co-load a 17GB model next to
+# ComfyUI and trigger a macOS memory-pressure kill. Set BRIEF_MODEL=qwen3.5:27b
+# for more reasoning horsepower when ComfyUI isn't loaded. qwen3.5:9b replaced
+# qwen2.5:7b as the default 2026-07-27 (the operator, via the voice assistant project: newer model,
+# tests better on 2026 tool-calling benchmarks at a similar footprint).
+# Helm 2c: BRIEF_MODEL always wins outright if set (never even asks Engine
+# Room); otherwise resolve role "chat.small" (cached, falls back to the
+# qwen3.5:9b default below if the host monitor's unreachable).
 _MODEL_DEFAULT = "qwen3.5:9b"
-MODEL = os.environ.get("BRIEF_MODEL") or modelroles.resolve("chat.small", _MODEL_DEFAULT)
+MODEL = os.environ.get("BRIEF_MODEL") or modelroles.resolve(
+    "chat.small", _MODEL_DEFAULT
+)
 
 
 def chat(

@@ -1,5 +1,5 @@
 """NewsAPI.ai (Event Registry) as a firehose source — real-time, high-quality
-global news with clean outlet names, tuned to the user's beat.
+global news with clean outlet names, tuned to the operator's beat.
 
 Distinct role vs. the other two news sources: RSS is the curated live roster,
 GDELT is the broad-world firehose, and this is the BEAT feed — keyword-focused
@@ -20,6 +20,7 @@ import requests
 
 from .. import applog
 from ..models import Item
+from .report import FetchReport
 
 log = applog.get(__name__)
 
@@ -48,12 +49,17 @@ def fetch(
     count: int = 40,
     key: str | None = None,
     timeout: float = 20,
+    report: FetchReport | None = None,
 ) -> list[Item]:
     """Recent Event Registry articles matching `keywords` (OR) as Items,
-    newest-first. Returns [] with no key or on any error."""
+    newest-first. Returns [] with no key or on any error; `report`, when
+    given, records the attempt and the error so the caller can tell the two
+    apart (N19)."""
     token = (key if key is not None else api_key()).strip()
     if not token:
         return []
+    if report is not None:
+        report.attempt()
     body = {
         "action": "getArticles",
         "keyword": keywords or DEFAULT_KEYWORDS,
@@ -72,10 +78,14 @@ def fetch(
         data = resp.json()
         if "error" in data:
             log.warning("NewsAPI.ai error (%s)", data["error"])
+            if report is not None:
+                report.fail(f"error payload: {data['error']}")
             return []
         results = data.get("articles", {}).get("results") or []
     except Exception as exc:  # noqa: BLE001 — fail-soft: fall back to other feeds
         log.error("NewsAPI.ai fetch FAILED (%r)", exc)
+        if report is not None:
+            report.fail(repr(exc))
         return []
 
     items: list[Item] = []

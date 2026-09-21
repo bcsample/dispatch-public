@@ -98,14 +98,14 @@ def test_news_loop_appends_newsapi_items(monkeypatch):
     monkeypatch.setattr(
         service.rss,
         "fetch_all",
-        lambda s: [
+        lambda s, **k: [
             Item(source_name="RSS", source_type="news", title="R", url="http://r/1")
         ],
     )
     monkeypatch.setattr(
         service.newsapi,
         "fetch",
-        lambda keywords, count: [
+        lambda keywords, count, **k: [
             Item(
                 source_name="Defense News",
                 source_type="news",

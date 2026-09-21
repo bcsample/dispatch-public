@@ -1,10 +1,11 @@
-"""The sweep loop + status/health logic behind the dashboard.
+"""The sweep loop + status/health logic behind the Open Window dashboard.
 
-Reuses the existing World Delta engine (`brief.ingest.world.fetch_all`) on a
-timer, and answers a fixed status contract (`GET /api/status`) so any
-external monitoring/dashboard tool can build against a stable shape.
+Reuses the existing World Delta engine untouched (`brief.ingest.world.fetch_all`,
+Phases 1-2) on a timer, and answers the fixed status contract from
+WORLD_DELTA_BUILD_PLAN.md ("Open Window (v1)" section) so the host monitor's dial
+can build against an exact shape.
 
-Layered on top of the base sweep:
+v2 (WORLD_DELTA_BUILD_PLAN.md's "v2" section) adds two more, additive things:
 - the sweep also retains each feed's *current* state (not just deltas) via
   `world.fetch_all`'s optional `current` out-param, for `/api/current`.
 - a second, lighter-cadence loop (`NewsLoop`) reuses `brief.ingest.rss` to
@@ -27,8 +28,9 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from .. import applog, db
+from .. import applog, db, untrusted
 from ..ingest import gdelt, googlenews, newsapi, rss, world
+from ..ingest.report import FetchReport
 from . import curate, dedup, flightroute, flights, geo, stoplist, surge
 
 log = applog.get(__name__)
@@ -87,7 +89,7 @@ class WindowState:
     error: str | None = field(default=None, init=False)
     started_at: str = field(default_factory=_utcnow_iso, init=False)
     # v2 — retained so the window shows "the world now", not just deltas
-    #, V2.1/V2.2).
+    # (see WORLD_DELTA_BUILD_PLAN.md's "v2" section, V2.1/V2.2).
     current: list[dict] = field(default_factory=list, init=False)
     news: list[dict] = field(default_factory=list, init=False)
     flights: list[dict] = field(default_factory=list, init=False)
@@ -218,9 +220,7 @@ class SweepLoop:
         while not self._stop.is_set():
             try:
                 self.run_one_sweep()
-            except (
-                Exception
-            ) as exc:  # noqa: BLE001 — a bad cycle must NOT kill the thread
+            except Exception as exc:  # noqa: BLE001 — a bad cycle must NOT kill the thread
                 log.error("sweep loop cycle FAILED (%r)", exc)
             self._stop.wait(self.interval_seconds)
 
@@ -269,13 +269,13 @@ def _headline_dicts(items: list) -> list[dict]:
 
 class NewsLoop:
     """Background thread: brief.ingest.rss.fetch_all() on its own, lighter
-    interval (v2 — 's "V2.2 — News panel"). Headlines
+    interval (v2 — WORLD_DELTA_BUILD_PLAN.md's "V2.2 — News panel"). Headlines
     only, no synthesis — this stays on the LLM-free live path. rss.fetch_all()
     is already fail-soft per source (one dead RSS source logs and is skipped);
     a totally unexpected top-level failure here just leaves the previously
     cached headlines in place rather than blanking the panel.
 
-    v4.1: after building the
+    v4.1 (WORLD_DELTA_BUILD_PLAN.md's "v4" section): after building the
     headline dicts, optionally run them through `dedup.cluster()` to collapse
     near-duplicate stories from multiple sources into one row. This is the
     ONE place Ollama is ever called on the window's live path — the 10s poll
@@ -327,7 +327,7 @@ class NewsLoop:
         self.gdelt_query = gdelt_query
         self.gdelt_timespan = gdelt_timespan
         self.gdelt_max_records = gdelt_max_records
-        # Backoff state (2026-07-28, Fable's full-log scan: 755 real GDELT
+        # Backoff state (2026-07-28, the architecture review's full-log scan: 755 real GDELT
         # 429s found in the wild) -- consecutive rate-limit signals grow the
         # skip window exponentially (2, 4, 8... capped at 12 cycles, ~2h at
         # the default 10-min cadence), reset to 0 the moment a call succeeds.
@@ -336,7 +336,7 @@ class NewsLoop:
         self.newsapi_enabled = newsapi_enabled
         self.newsapi_keywords = newsapi_keywords
         self.newsapi_count = newsapi_count
-        # Dial-back (2026-07-24): the user's Event Registry token quota was half
+        # Dial-back (2026-07-24): the operator's Event Registry token quota was half
         # gone -- NewsAPI.ai was being called every cycle. Default stays 1
         # (unchanged behavior) but window.yaml now sets this higher so the
         # real deployment calls it far less often while Google News RSS
@@ -353,11 +353,15 @@ class NewsLoop:
         synchronously without starting the thread."""
         self._cycle_count += 1
         try:
-            items = rss.fetch_all(self.sources)
-            self.state.record_feed_health("RSS", True)
-        except (
-            Exception
-        ) as exc:  # noqa: BLE001 — keep previous headlines, don't blank the panel
+            # N19: every fetcher fails soft to [] by design, so health is
+            # recorded from the fetcher's own report (attempts vs failures),
+            # never from "it returned". A cycle where EVERY request failed
+            # is a failure; partial loss is degraded-but-delivering and its
+            # per-request errors are already in the log.
+            rss_report = FetchReport()
+            items = rss.fetch_all(self.sources, report=rss_report)
+            self.state.record_feed_health("RSS", rss_report.ok, rss_report.summary())
+        except Exception as exc:  # noqa: BLE001 — keep previous headlines, don't blank the panel
             log.error("news fetch FAILED (%r)", exc)
             self.state.record_feed_health("RSS", False, repr(exc))
             return
@@ -375,10 +379,12 @@ class NewsLoop:
                     self._gdelt_backoff_cycles_remaining,
                 )
             else:
+                gdelt_report = FetchReport()
                 result = gdelt.fetch(
                     query=self.gdelt_query,
                     timespan=self.gdelt_timespan,
                     max_records=self.gdelt_max_records,
+                    report=gdelt_report,
                 )
                 if result is None:
                     self._gdelt_consecutive_ratelimits += 1
@@ -386,33 +392,49 @@ class NewsLoop:
                         2**self._gdelt_consecutive_ratelimits, 12
                     )
                     self.state.record_feed_health(
-                        "GDELT", False,
-                        f"rate-limited, backing off {self._gdelt_backoff_cycles_remaining} cycles",
+                        "GDELT",
+                        False,
+                        "rate-limited, backing off "
+                        f"{self._gdelt_backoff_cycles_remaining} cycles",
                     )
                 else:
                     self._gdelt_consecutive_ratelimits = 0
                     items = items + result
-                    self.state.record_feed_health("GDELT", True)
+                    self.state.record_feed_health(
+                        "GDELT", gdelt_report.ok, gdelt_report.summary()
+                    )
         # NewsAPI.ai (Event Registry) — the real-time beat feed; same pipeline,
         # fail-soft inside newsapi.fetch (no key / error -> nothing added).
         # Dialed back to every newsapi_every_n_cycles cycles (default 1 = old
-        # behavior) so it stops burning through the user's token quota now that
+        # behavior) so it stops burning through the operator's token quota now that
         # Google News RSS (below) carries the beat-feed role day to day.
-        if self.newsapi_enabled and self._cycle_count % self.newsapi_every_n_cycles == 0:
+        if (
+            self.newsapi_enabled
+            and self._cycle_count % self.newsapi_every_n_cycles == 0
+        ):
+            newsapi_report = FetchReport()
             items = items + newsapi.fetch(
-                keywords=self.newsapi_keywords, count=self.newsapi_count
+                keywords=self.newsapi_keywords,
+                count=self.newsapi_count,
+                report=newsapi_report,
             )
-            self.state.record_feed_health("NewsAPI", True)
+            self.state.record_feed_health(
+                "NewsAPI", newsapi_report.ok, newsapi_report.summary()
+            )
         # Google News RSS — the free (no key, no quota) beat feed. One request
         # per keyword; fail-soft per keyword inside googlenews.fetch. Keywords
         # are loaded fresh each cycle (not captured at startup) so edits made
         # via the keyword management page (GET /keywords) take effect on the
         # very next fetch, no restart needed.
         if self.googlenews_enabled:
+            gn_report = FetchReport()
             items = items + googlenews.fetch(
-                count_per_keyword=self.googlenews_count_per_keyword
+                count_per_keyword=self.googlenews_count_per_keyword,
+                report=gn_report,
             )
-            self.state.record_feed_health("Google News", True)
+            self.state.record_feed_health(
+                "Google News", gn_report.ok, gn_report.summary()
+            )
         headlines = _headline_dicts(items)
         if self.dedup_enabled:
             headlines = dedup.cluster(headlines, threshold=self.dedup_similarity)
@@ -424,7 +446,7 @@ class NewsLoop:
         self._stamp_first_seen(headlines)
         # Curation (pillar 3): one batched local-qwen scoring pass per cycle,
         # skipped entirely while ComfyUI renders (curate.comfyui_busy — renders
-        # are sacred) OR during curation quiet hours (the user: doesn't need to
+        # are sacred) OR during curation quiet hours (the operator: doesn't need to
         # run 6pm-9am — nobody's reading fresh beat scores overnight, and
         # that's also when ComfyUI is most often mid-render anyway). None ->
         # this cycle's headlines just go out unscored.
@@ -488,9 +510,7 @@ class NewsLoop:
         while not self._stop.is_set():
             try:
                 self.run_one_fetch()
-            except (
-                Exception
-            ) as exc:  # noqa: BLE001 — a bad cycle must NOT kill the thread
+            except Exception as exc:  # noqa: BLE001 — a bad cycle must NOT kill the thread
                 log.error("news loop cycle FAILED (%r)", exc)
             self._stop.wait(self.interval_seconds)
 
@@ -561,9 +581,7 @@ class FlightLoop:
         while not self._stop.is_set():
             try:
                 self.run_one_fetch()
-            except (
-                Exception
-            ) as exc:  # noqa: BLE001 — a bad cycle must NOT kill the thread
+            except Exception as exc:  # noqa: BLE001 — a bad cycle must NOT kill the thread
                 log.error("flight loop cycle FAILED (%r)", exc)
             self._stop.wait(self.interval_seconds)
 
@@ -711,7 +729,7 @@ def build_status(
     state: WindowState, sweep_interval_seconds: int, loops: dict | None = None
 ) -> dict:
     """GET /api/status contract — field names/shape must match
-     exactly. `loops` (optional, additive: no new
+    WORLD_DELTA_BUILD_PLAN.md exactly. `loops` (optional, additive: no new
     field) folds core-thread liveness into `ok`, so the dashboard's health dot
     goes degraded when the sweep or news thread has died — not just when a
     sweep reported an error."""
@@ -793,8 +811,7 @@ def current_state(state: WindowState, limit: int = 200) -> list[dict]:
 
     Records are capped to `limit` per feed: the OFAC feed carries ~19k rows and
     the dashboard polls this every 10s, so an uncapped payload was ~2.9MB per
-    poll (too slow over anything but a fast local link). `total` carries the
-    TRUE count so the board
+    poll (unusable over Tailscale). `total` carries the TRUE count so the board
     still reads "19217 current" while only the top `limit` rows cross the wire
     (quakes are already floored/sorted well under the cap; sanctions show a
     count + this-sweep's additions, which the cap comfortably covers)."""
@@ -812,8 +829,8 @@ def current_state(state: WindowState, limit: int = 200) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# dispatch-alerts-v1 — the LIVE breaking feed for voice consumers.
-# Sibling of the DISPATCH-MD v1 block contract (
+# dispatch-alerts-v1 — the LIVE breaking feed for voice consumers (Jarvis).
+# Sibling of the DISPATCH-MD v1 block contract (DISPATCH_INTEL_CENTER_DESIGN.md
 # §9): DISPATCH-MD is the once-a-morning digest handoff; THIS is the
 # minutes-cadence "really important things" handoff. Same discipline — fixed,
 # versioned shape; version-bump on any breaking change, never silently reshape.
@@ -867,7 +884,7 @@ _COMPASS_RE = re.compile(
 # Non-Latin script blocks: the voice (Kokoro bm_george/en-gb, or macOS `say`
 # Daniel fallback) is English-only -- forcing it to phonemize Arabic/Farsi/
 # Hebrew/Cyrillic/CJK/etc. text produces garbled, broken-sounding audio
-# (the user, 2026-07-21: "one of the sources was in Arabic or Farsi, and the
+# (the operator, 2026-07-21: "one of the sources was in Arabic or Farsi, and the
 # system really choked on that"). Headlines dominated by these scripts are
 # excluded from SPEECH ONLY -- the board/ticker still show them fine, since
 # rendering Unicode visually isn't the problem, reading it aloud is.
@@ -901,12 +918,27 @@ def _is_speakable(text: str | None, threshold: float = 0.3) -> bool:
     return (non_latin / len(letters)) < threshold
 
 
+def _voice_safe(text: str | None) -> bool:
+    """Gate for speak_worthy: readable aloud AND not flagged as a possible
+    prompt injection. Same "board yes, voice no" pattern as _is_speakable
+    alone already used -- an untrusted headline still shows on the board
+    (nothing here ever hides content from the operator), it just never gets read
+    aloud verbatim by Kokoro/`say`, which has no LLM in the loop to see a
+    "don't follow instructions" preamble the way curation's fenced prompt
+    does. See brief/untrusted.py's module docstring."""
+    return _is_speakable(text) and not untrusted.is_injection_flagged(text)
+
+
 def _speechify(text: str | None, limit: int = 180) -> str:
     """Make a headline read naturally aloud: expand the abbreviations that
     sound wrong ("M6.2" -> "magnitude 6.2", "90 km" -> "90 kilometers",
     "SW of" -> "southwest of"), turn dashes into pauses, tidy punctuation, and
-    trim over-long headlines at a word boundary so the voice doesn't monologue."""
-    t = (text or "").strip()
+    trim over-long headlines at a word boundary so the voice doesn't monologue.
+    Invisible/zero-width characters are stripped unconditionally first --
+    defense-in-depth even for text that already passed _voice_safe's scan,
+    since a scanner keyed on literal words can be defeated by a
+    zero-width-joined payload (see untrusted.py's _ZEROWIDTH_RE note)."""
+    t = untrusted.strip_invisibles(text or "").strip()
     t = _MAG_RE.sub(r"magnitude \1", t)
     t = _KM_RE.sub(r"\1 kilometers", t)
     t = _COMPASS_RE.sub(lambda m: _COMPASS[m.group(1)], t)
@@ -970,9 +1002,9 @@ def compute_convergence_alerts(
     cell_deg: float = 1.0,
     min_kinds: int = 3,
 ) -> list[dict]:
-    """The deepest intel signal ( / DISPATCH_INTEL_
+    """The deepest intel signal (WORLD_DELTA_BUILD_PLAN.md / DISPATCH_INTEL_
     CENTER_DESIGN.md): when 3+ INDEPENDENT channels -- a structured world-feed
-    event, general news volume, an anomalous coverage spike, and/or the user's
+    event, general news volume, an anomalous coverage spike, and/or the operator's
     own curated professional-beat judgment -- all point at the SAME ~1-degree
     patch of the map within the last 24h, that's a much stronger signal than
     any one alone. Bins each channel's geolocated items into cells and flags
@@ -1054,7 +1086,7 @@ def compute_convergence_alerts(
                 # Rare and significant enough to always earn a word, same as
                 # world/watchlist -- unless the place name itself would choke
                 # the voice (non-Latin script).
-                "speak_worthy": _is_speakable(place),
+                "speak_worthy": _voice_safe(place),
             }
         )
     return out
@@ -1143,7 +1175,7 @@ def build_alerts(
                 # The VOICE is rarer than the board: major world events always
                 # qualify (they're already floored at alerts_min_severity) --
                 # unless the title would be unreadable aloud (non-Latin script).
-                "speak_worthy": _is_speakable(title),
+                "speak_worthy": _voice_safe(title),
             }
         )
 
@@ -1172,13 +1204,12 @@ def build_alerts(
                 # Board shows every multi-source cluster; the voice only speaks
                 # the ones a lot of outlets are carrying, in a script it can
                 # actually pronounce.
-                "speak_worthy": n >= speak_min_sources
-                and _is_speakable(h.get("title")),
+                "speak_worthy": n >= speak_min_sources and _voice_safe(h.get("title")),
             }
         )
 
     # Watchlist alerts (curation, pillar 3): a FRESH story the local model
-    # scored squarely on the user's beat. A story already alerted as a
+    # scored squarely on the operator's beat. A story already alerted as a
     # multi-source cluster isn't announced twice.
     for h in state.news_snapshot():
         if not h.get("beat"):
@@ -1200,9 +1231,9 @@ def build_alerts(
                 "place": h.get("place"),
                 "source_name": h.get("source_name"),
                 "speak": f"On your watchlist. {_speechify(h.get('title'))}.",
-                # Your own beat always earns a word -- unless it's in a script
+                # His own beat always earns a word -- unless it's in a script
                 # the voice would just mangle.
-                "speak_worthy": _is_speakable(h.get("title")),
+                "speak_worthy": _voice_safe(h.get("title")),
             }
         )
 
@@ -1223,12 +1254,15 @@ def build_alerts(
         # to actually say.
         top = _top_headline_for_place(state, s["place"])
         title = f"Coverage surge: {s['place']} — {s['count']} stories in the last hour"
-        speak = f"Coverage is spiking on {s['place']}. {s['count']} stories in the last hour."
+        speak = (
+            f"Coverage is spiking on {s['place']}. "
+            f"{s['count']} stories in the last hour."
+        )
         if top and top.get("title"):
             title += f' — top story: "{top["title"]}"'
             # The board can show any script fine; the spoken clause only adds
             # the top story if the voice can actually pronounce it.
-            if _is_speakable(top["title"]):
+            if _voice_safe(top["title"]):
                 speak += f" Top story: {_speechify(top['title'])}."
         alerts.append(
             {
@@ -1297,7 +1331,7 @@ def recent_news(
     """GET /api/news payload (v2 base + v3 filter) — cached headlines,
     newest-first (the cache itself is already sorted by NewsLoop).
 
-    v3, "Last-2-hours filter"):
+    v3 (WORLD_DELTA_BUILD_PLAN.md's "v3" section, "Last-2-hours filter"):
     when `window_hours` is given (and > 0), only items whose published_at
     falls within the last `window_hours` are returned; items with no
     parseable timestamp are excluded outright — a live firehose only shows
@@ -1319,7 +1353,7 @@ def read_news_script(
     state: WindowState, beat_limit: int = 4, world_limit: int = 8, total_cap: int = 8
 ) -> list[str]:
     """Spoken lines for the board's on-demand "read the news" button (a small
-    voice orb the user clicks at their desk) — a short round-up leading with
+    Jarvis orb the operator clicks at his desk) — a short round-up leading with
     anything fresh on his beat, then top world headlines, capped so the whole
     read stays ~45-75s (a catch-up, not a full newscast). Reuses the SAME
     news_digest() pool get_news/get_defense_news read from (CE6, "one news
@@ -1350,13 +1384,13 @@ def news_digest(
     state: WindowState, kind: str = "world", limit: int = 6, window_hours: float = 6.0
 ) -> list[dict]:
     """GET /api/news/digest payload — a small, pre-ranked round-up for ON-DEMAND
-    voice consumers (e.g. an external agent's get_news tool). "One news brain":
-    this reads the SAME curated pool the board's map/ticker use, so nothing stops
+    voice consumers (Jarvis's get_news/get_defense_news). "One news brain": this
+    reads the SAME curated pool the board's map/ticker use, so Jarvis stops
     re-fetching its own separate, uncurated RSS pull for the same request.
 
     kind="world" -> general round-up, any topic: most-carried (dupe_count) and
         freshest first, noise (stoplist sports/entertainment) excluded.
-    kind="beat"  -> the user's professional beat ONLY (config/profile.yaml, scored
+    kind="beat"  -> the operator's professional beat ONLY (config/profile.yaml, scored
         by the curation pass — defense/IC/GovCon/AI-ML/PQC/M&A, a superset of
         a static "defense" feed list), highest-scored first. Empty when
         curation hasn't run yet or found nothing on-beat in the window — never
@@ -1365,7 +1399,7 @@ def news_digest(
     Everything returned here is meant to be SPOKEN (unlike /api/news, which
     also feeds the board's visual ticker) -- headlines in a non-Latin script
     (Arabic/Farsi/Hebrew/Cyrillic/CJK/etc.) are excluded entirely, since the
-    English-only voice mangles them (the user, 2026-07-21: "the system really
+    English-only voice mangles them (the operator, 2026-07-21: "the system really
     choked on that").
     """
     cutoff = datetime.now(timezone.utc) - timedelta(hours=window_hours)
@@ -1373,7 +1407,7 @@ def news_digest(
     for h in state.news_snapshot():
         if h.get("noise"):
             continue
-        if not _is_speakable(h.get("title")):
+        if not _voice_safe(h.get("title")):
             continue
         published = _parse_iso(h.get("published_at"))
         if published is not None and published < cutoff:
@@ -1382,7 +1416,7 @@ def news_digest(
 
     if kind == "beat":
         pool = [h for h in pool if h.get("beat")]
-        pool.sort(key=lambda h: (h.get("beat_score") or 0), reverse=True)
+        pool.sort(key=lambda h: h.get("beat_score") or 0, reverse=True)
     else:
         pool.sort(
             key=lambda h: (h.get("dupe_count") or 1, h.get("published_at") or ""),
@@ -1406,7 +1440,7 @@ def news_digest(
 
 def news_search(query: str, limit: int = 5) -> list[dict]:
     """GET /api/news/search payload — "read me the top news on <query>"
-    (the user, 2026-07-28: "just a top news, reader"). LIVE on-demand Google
+    (the operator, 2026-07-28: "just a top news, reader"). LIVE on-demand Google
     News RSS search (free, no key — brief/ingest/googlenews.py, the same
     beat-feed adapter, called directly rather than through the persisted
     news-loop cache), NOT the curated board pool news_digest() reads —
@@ -1420,11 +1454,13 @@ def news_search(query: str, limit: int = 5) -> list[dict]:
     # Over-fetch a bit so filtering still leaves `limit` results most of the
     # time, without making this an expensive call (one Google News RSS
     # request either way — see googlenews._fetch_keyword).
-    items = googlenews.fetch(keywords=[query], count_per_keyword=limit * 3, include_feeds=False)
+    items = googlenews.fetch(
+        keywords=[query], count_per_keyword=limit * 3, include_feeds=False
+    )
     headlines = _headline_dicts(items)
     out = []
     for h in headlines:
-        if h.get("noise") or not _is_speakable(h.get("title")):
+        if h.get("noise") or not _voice_safe(h.get("title")):
             continue
         out.append(
             {

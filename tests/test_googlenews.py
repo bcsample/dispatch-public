@@ -84,9 +84,7 @@ def test_remove_keyword_persists(tmp_path, monkeypatch):
 
 
 def test_fetch_keyword_splits_outlet_and_skips_blank_titles(monkeypatch):
-    monkeypatch.setattr(
-        googlenews.requests, "get", lambda *a, **k: _Resp(_FEED_XML)
-    )
+    monkeypatch.setattr(googlenews.requests, "get", lambda *a, **k: _Resp(_FEED_XML))
     items = googlenews._fetch_keyword("Pentagon", count=10, timeout=5)
     assert len(items) == 2  # the blank-title entry is dropped
     first = items[0]
@@ -128,7 +126,9 @@ def test_fetch_uses_persisted_keywords_when_none_given(tmp_path, monkeypatch):
     googlenews.save_keywords(["one term"])
     seen = []
     monkeypatch.setattr(
-        googlenews, "_fetch_keyword", lambda kw, count, timeout: seen.append(kw) or []
+        googlenews,
+        "_fetch_keyword",
+        lambda kw, count, timeout, *a: seen.append(kw) or [],
     )
     googlenews.fetch(include_feeds=False)
     assert seen == ["one term"]
@@ -161,7 +161,12 @@ def test_add_feed_persists_and_dedupes_on_type_and_value(tmp_path, monkeypatch):
 
 def test_remove_feed_persists(tmp_path, monkeypatch):
     monkeypatch.setattr(googlenews, "FEEDS_PATH", tmp_path / "feeds.json")
-    googlenews.save_feeds([{"label": "Top", "type": "top"}, {"label": "World", "type": "topic", "value": "X"}])
+    googlenews.save_feeds(
+        [
+            {"label": "Top", "type": "top"},
+            {"label": "World", "type": "topic", "value": "X"},
+        ]
+    )
     got = googlenews.remove_feed("top")
     assert got == [{"label": "World", "type": "topic", "value": "X"}]
     assert googlenews.load_feeds() == got
@@ -194,10 +199,14 @@ def test_fetch_includes_feeds_by_default(tmp_path, monkeypatch):
     googlenews.save_feeds([{"label": "Top", "type": "top"}])
     seen_keywords, seen_feeds = [], []
     monkeypatch.setattr(
-        googlenews, "_fetch_keyword", lambda kw, count, timeout: seen_keywords.append(kw) or []
+        googlenews,
+        "_fetch_keyword",
+        lambda kw, count, timeout, *a: seen_keywords.append(kw) or [],
     )
     monkeypatch.setattr(
-        googlenews, "_fetch_feed", lambda feed, count, timeout: seen_feeds.append(feed) or []
+        googlenews,
+        "_fetch_feed",
+        lambda feed, count, timeout, *a: seen_feeds.append(feed) or [],
     )
     googlenews.fetch(keywords=["x"], count_per_keyword=5)
     assert seen_keywords == ["x"]
@@ -217,12 +226,17 @@ def test_fetch_can_exclude_feeds(monkeypatch):
 def test_news_loop_appends_googlenews_items(monkeypatch):
     from brief.models import Item
 
-    monkeypatch.setattr(service.rss, "fetch_all", lambda s: [])
+    monkeypatch.setattr(service.rss, "fetch_all", lambda s, **k: [])
     monkeypatch.setattr(
         service.googlenews,
         "fetch",
-        lambda count_per_keyword: [
-            Item(source_name="Defense News", source_type="news", title="G", url="http://g/1")
+        lambda count_per_keyword, **k: [
+            Item(
+                source_name="Defense News",
+                source_type="news",
+                title="G",
+                url="http://g/1",
+            )
         ],
     )
     state = service.WindowState(sweep_interval_seconds=900)
@@ -234,10 +248,10 @@ def test_news_loop_appends_googlenews_items(monkeypatch):
 
 
 def test_newsapi_every_n_cycles_throttles_calls(monkeypatch):
-    monkeypatch.setattr(service.rss, "fetch_all", lambda s: [])
+    monkeypatch.setattr(service.rss, "fetch_all", lambda s, **k: [])
     calls = []
     monkeypatch.setattr(
-        service.newsapi, "fetch", lambda keywords, count: calls.append(1) or []
+        service.newsapi, "fetch", lambda keywords, count, **k: calls.append(1) or []
     )
     state = service.WindowState(sweep_interval_seconds=900)
     loop = service.NewsLoop(
@@ -255,10 +269,10 @@ def test_newsapi_every_n_cycles_throttles_calls(monkeypatch):
 
 def test_newsapi_every_n_cycles_default_is_every_cycle(monkeypatch):
     # Unset/default (1) must reproduce the old always-call-it behavior.
-    monkeypatch.setattr(service.rss, "fetch_all", lambda s: [])
+    monkeypatch.setattr(service.rss, "fetch_all", lambda s, **k: [])
     calls = []
     monkeypatch.setattr(
-        service.newsapi, "fetch", lambda keywords, count: calls.append(1) or []
+        service.newsapi, "fetch", lambda keywords, count, **k: calls.append(1) or []
     )
     state = service.WindowState(sweep_interval_seconds=900)
     loop = service.NewsLoop(

@@ -1,6 +1,6 @@
 """Open Window (v1 + v2) — the always-on, LLM-free local dashboard.
 
-Two surfaces, two cadences, "Open Window
+Two surfaces, two cadences (see WORLD_DELTA_BUILD_PLAN.md, "Open Window
 (v1)"): the 7:56am Apps Script email is the warm, LLM-synthesized snapshot;
 this package is the live window you can pull up any time and see the world
 *now* — a sweep loop timer over the existing World Delta engine
@@ -11,5 +11,5 @@ existing RSS ingestor (`brief/ingest/rss.py`) on its own lighter cadence.
 
 Iron rule: nothing under this package imports Ollama, `brief/generate.py`,
 or any LLM. That's what lets it sweep all day without competing for memory
-against ComfyUI/Studio renders (see [[ollama-memory-pressure-rule]]).
+against ComfyUI/Studio renders (see ).
 """

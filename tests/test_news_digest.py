@@ -1,6 +1,6 @@
-"""GET /api/news/digest — a pre-ranked round-up for on-demand voice/agent
-consumers to read instead of running their own separate, uncurated RSS
-pull. See brief/window/service.py::news_digest."""
+"""GET /api/news/digest — the "one news brain" round-up the voice assistant project's
+get_news/get_defense_news read on demand, instead of running their own
+separate, uncurated RSS pull. See brief/window/service.py::news_digest."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def _state_with_headlines():
                 "dupe_count": 1,
             },
             {
-                "title": "On the user's beat",
+                "title": "On the operator's beat",
                 "source_name": "C",
                 "url": "u3",
                 "published_at": _iso(15),
@@ -87,14 +87,14 @@ def test_world_kind_excludes_noise_and_stale_ranks_by_carriage():
 def test_beat_kind_only_returns_on_beat_ranked_by_score():
     items = service.news_digest(_state_with_headlines(), kind="beat", limit=10)
     titles = [i["title"] for i in items]
-    assert titles == ["On the user's beat", "Lower-scored beat item"]
+    assert titles == ["On the operator's beat", "Lower-scored beat item"]
     assert items[0]["beat_score"] == 9
 
 
 def test_digest_excludes_non_latin_script_headlines():
-    # the user, 2026-07-21: "one of the sources was in Arabic or Farsi, and the
+    # the operator, 2026-07-21: "one of the sources was in Arabic or Farsi, and the
     # system really choked on that." Everything news_digest() returns is
-    # meant to be SPOKEN (read_news button, an external agent's get_news/get_defense_
+    # meant to be SPOKEN (read_news button, Jarvis's get_news/get_defense_
     # news), unlike /api/news which also feeds the visual ticker.
     state = service.WindowState(sweep_interval_seconds=900)
     state.record_news(
@@ -147,7 +147,7 @@ def test_read_news_script_leads_with_beat_then_world_no_repeats():
     assert lines[0] == "Here's the news, sir."
     # Beat items first, tagged; world items after, most-carried first; the
     # noise/stale items never appear at all.
-    assert lines[1] == "On your beat: On the user's beat."
+    assert lines[1] == "On your beat: On the operator's beat."
     assert lines[2] == "On your beat: Lower-scored beat item."
     assert lines[3] == "Widely carried story — 6 outlets."
     assert not any("Sports noise" in line or "Too old" in line for line in lines)

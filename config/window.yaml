@@ -2,8 +2,12 @@
 # sweep cadence / bind address here, no code changes needed. Absent file or
 # absent keys fall back to the documented v1 defaults in brief/config.py.
 sweep_interval_seconds: 900   # how often the sweep loop calls world.fetch_all()
-port: 8808                    # suggested default port
-host: 0.0.0.0                 # bind broadly so it's reachable from other devices on your network
+port: 8808                    # suggested v1 port (nothing else in the house uses it)
+# Loopback + `a private-network proxy --https=8808`, never 0.0.0.0 (architecture review /
+# #539, 2026-08-16: Dispatch was the ONLY project service bound to every
+# interface -- LAN-readable, not just private network-readable, for a daily intel
+# brief). DISPATCH_BIND_HOST env var is the typed-out escape hatch.
+host: 127.0.0.1
 recent_deltas_limit: 200      # how many recent world Items the board/map fetch per poll
 news_interval_seconds: 600    # v2 — how often the news loop calls rss.fetch_all() (config/sources.yaml)
 recent_news_limit: 100        # v2 — how many cached headlines /api/news returns by default
@@ -14,9 +18,10 @@ current_records_limit: 200
 # v3: Headlines firehose (config/news_firehose.yaml) — only show items
 # published within this many hours, newest-first. Undated items are excluded.
 news_window_hours: 2
-# /api/news/digest window — a wider on-demand round-up for external voice/
-# agent consumers, distinct from the live ticker's news_window_hours (2h) so
-# an on-demand "give me the news" doesn't come back empty at a quiet moment.
+# v5: /api/news/digest window — the "one news brain" round-up the voice assistant project's
+# get_news/get_defense_news read on demand instead of running their own RSS
+# pull. Wider than the live ticker's news_window_hours (2h) so an on-demand
+# "give me the news" doesn't come back empty at a quiet moment.
 news_digest_window_hours: 6
 
 # v4.1: near-duplicate headline clustering via nomic-embed-text (Ollama),
@@ -40,16 +45,19 @@ gdelt_timespan: "1h"
 gdelt_max_records: 75
 
 # NewsAPI.ai (Event Registry) — real-time BEAT feed. Needs NEWSAPI_KEY in .env
-# (auto-loaded); auto-disables if the key is absent. Keyword-focused on the user's
+# (auto-loaded); auto-disables if the key is absent. Keyword-focused on the operator's
 # professional beat by default (see brief/ingest/newsapi.py DEFAULT_KEYWORDS);
 # override newsapi_keywords to refocus. Same pipeline as RSS/GDELT.
-# DIALED BACK 2026-07-24 (the user: "I got a note from News API that I've used
+# DIALED BACK 2026-07-24 (the operator: "I got a note from News API that I've used
 # half my tokens... I don't want to pay for anything"). Was called every
 # 10-min cycle at count=40 (~144 calls/day) -- now every 6th cycle (~hourly)
 # at count=15, while Google News RSS (below, free/no quota) takes over the
 # beat-feed role day to day. Kept enabled (not retired) as a lower-frequency
 # supplement, not the primary beat source anymore.
-newsapi_enabled: true
+# OFF 2026-09-14 (N18; the operator: "out of News API hits. Are we using that
+# anymore?"). Every call had been a 403 since 2026-09-12. Google News RSS
+# carries the beat; flip this back to true to re-enable (engine restart).
+newsapi_enabled: false
 newsapi_count: 15
 newsapi_every_n_cycles: 6
 # newsapi_keywords: ["defense contract", "HUMINT", "DIA", "post-quantum"]
@@ -58,14 +66,13 @@ newsapi_every_n_cycles: 6
 # replacement. Keywords are a small persisted list (data/
 # google_news_keywords.json, seeded from brief/ingest/googlenews.py
 # DEFAULT_KEYWORDS on first run), editable live from GET /keywords -- NOT a
-# config list here, so the user can add/remove beat terms without touching YAML
+# config list here, so the operator can add/remove beat terms without touching YAML
 # or restarting the service.
 googlenews_enabled: true
 googlenews_count_per_keyword: 8
 
 # dispatch-alerts-v1 (/api/alerts) — the live "really important things" feed
-# for voice consumers (scripts/dispatch_speak.py, or your own external
-# voice agent). Deterministic,
+# for voice consumers (Jarvis / scripts/dispatch_speak.py). Deterministic,
 # LLM-free. An alert is: a world event at/above alerts_min_severity seen in
 # the last 24h, OR a news story that alerts_min_sources+ independent outlets
 # carry within alerts_fresh_minutes of us first seeing it.
@@ -100,44 +107,54 @@ speak_quiet_end_hour: 9
 # ...and only on weekdays. When true the voice stays silent all day Sat/Sun (the
 # board still shows everything). Set false for a 7-day voice.
 speak_weekdays_only: true
-# Extra meeting signal on top of mic-in-use: an OPTIONAL Google Calendar
-# check (see brief/window/calendar_check.py -- bring your own read-only
-# integration, or leave this off) for an event covering right now. Catches
-# call audio routed through a different device, and the exact instant a
-# scheduled meeting starts (the bulletin's own :00/:30 cadence collides with
-# that by construction). Fail-soft: any problem -> assumed no meeting,
-# mic-in-use remains the primary signal regardless.
+# Extra meeting signal on top of mic-in-use: check the operator's Google Calendar
+# (reuses the voice assistant project's already-authorized read-only tokens, no separate
+# OAuth setup) for an event covering right now. Catches call audio routed
+# through a different device, and the exact instant a scheduled meeting
+# starts (the bulletin's own :00/:30 cadence collides with that by
+# construction). Fail-soft: any problem reading the calendar -> assumed no
+# meeting, mic-in-use remains the primary signal regardless.
 speak_check_calendar: true
 # Skip the scheduled bulletin when nobody's touched the machine in a while
-# (system-wide HID idle time -- nobody's there to hear it if nobody's
-# touched the machine in a while). Deliberately scoped to the
+# (system-wide HID idle time, same idea as dispatch-shell's own idle-based
+# screen-lock policy). the operator, 2026-08-04: "stop wasting compute... I don't
+# need to hear odd voices from the basement." Deliberately scoped to the
 # SCHEDULED bulletin only, never the manual read-news button (a click
 # already proves someone's there).
 speak_skip_when_display_idle: true
 speak_display_idle_minutes: 20
-# The VOICE ITSELF. "kokoro" = a local neural voice (bm_george, British
-# male) -- CPU/RAM only, no cloud, no GPU required. Weights aren't bundled
-# (see brief/window/kokoro_tts.py); download them once and set
-# DISPATCH_KOKORO_DIR, or just leave this on "kokoro" and let it fall back
-# to macOS `say` (Daniel) automatically if the weights aren't found -- the
-# wall never goes mute either way. Set speak_engine: say to force the
-# fallback outright. speed 1.0 = natural.
+# The VOICE ITSELF. "kokoro" = the Jarvis neural voice (bm_george, British
+# male), a LOCAL model shared with the voice assistant project — CPU/RAM only, no cloud, no
+# ComfyUI GPU contention. Weights are reused from the voice assistant project by default
+# (override with DISPATCH_KOKORO_DIR). If the model is missing or errors, the
+# speaker automatically falls back to macOS `say` (Daniel), so the wall never
+# goes mute. Set speak_engine: say to force the fallback. speed 1.0 = natural.
 speak_engine: kokoro
 speak_kokoro_voice: bm_george
 speak_kokoro_lang: en-gb
 speak_kokoro_speed: 1.0
 
-# Curation (pillar 3, "ranked to the user's beat"): one batched local qwen3.5:9b
+# Curation (pillar 3, "ranked to the operator's beat"): one batched local qwen3.5:9b
 # scoring pass per news cycle against config/profile.yaml. HARD RULE: skipped
 # whenever ComfyUI (comfyui_url) has anything running or queued — renders are
 # sacred, curation is best-effort. Stories scoring >= curation_min_score get a
 # BEAT badge on the board and a "watchlist" alert (spoken by the speaker).
-# qwen3.5:9b is a reasonable general-purpose default for local curation --
-# swap curation_model for whatever you have pulled in Ollama.
-# Quiet hours here wrap midnight like the voice's own quiet hours
+# qwen3.5:9b replaced qwen2.5:7b as the default 2026-07-27 (the operator, via
+# the voice assistant project: newer model, tests better on 2026 tool-calling benchmarks).
+# Quiet hours (the operator, 2026-07-27: "it doesn't need to run between the hours
+# of 6 PM and 9 AM") -- wraps midnight like the voice's own quiet hours
 # (brief/window/quiet.py), but this is a SEPARATE window, not the same knob.
 curation_enabled: true
-curation_model: qwen3.5:9b
+# curation_model DELIBERATELY UNSET (2026-08-27, the operator's call). It used to pin the bare
+# tag `qwen3.5:9b`, which stopped existing when the host monitor renamed the model with its
+# -er16k context suffix. Ollama answered "model not found", curate() swallows that by
+# design ("best-effort"), every headline stayed unscored, and the beat digest returned []
+# forever -- silently, while the board still looked healthy because HEADLINES were
+# arriving fine. 58 headlines in the store, 0 with a beat_score, when it was found.
+#
+# Unset falls through to curate.DEFAULT_MODEL, which resolves the host monitor's `chat.small`
+# role. A role survives the next rename; a literal does not. Set CURATION_MODEL in the
+# environment for a one-off override rather than re-pinning a tag here.
 curation_min_score: 8
 curation_quiet_start_hour: 18
 curation_quiet_end_hour: 9
@@ -146,8 +163,7 @@ comfyui_url: http://localhost:8000
 # "Skies" board (/api/flights) — live aircraft near you, departure-board style
 # (inspired by theflightwall.com). Free no-auth ADS-B (adsb.fi), no LLM, no
 # ComfyUI memory risk. Set flights_lat/lon to enable (empty -> panel hidden).
-# Default: Reagan National / Washington, DC area. Move the box by editing
-# these to your own location (lat/lon of the center point you want to watch).
+# Default: Reagan National / Alexandria VA area. Move the box by editing these.
 flights_lat: 38.85
 flights_lon: -77.04
 flights_radius_nm: 25   # zoomed in for a legible local view (keeps DCA + IAD)

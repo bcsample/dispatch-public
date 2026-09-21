@@ -1,7 +1,7 @@
 """Google News RSS keyword search as a firehose source — the free NewsAPI.ai
-replacement (the user: "I don't want to pay for anything... build google news
+replacement (the operator: "I don't want to pay for anything... build google news
 rss"). No key, no token accounting, no rate-limit risk — the exact technique
-the user's own Apps Script morning digest already uses for company-watchlist
+the operator's own Apps Script morning digest already uses for company-watchlist
 searches, just pointed at the same defense/intel/GovCon beat keywords
 newsapi.py covered.
 
@@ -10,10 +10,10 @@ through the SAME pipeline (dedup/geo/first_seen/curate/surge/alerts).
 
 Two independent sources, both fetched every cycle:
 - KEYWORDS (data/google_news_keywords.json) — plain search queries. Works
-  great for the beat terms AND for hyper-local area names (a city/neighborhood
-  name verified live to return genuinely local results) — but NOT for
-  "breaking" or "world" as literal search words, which just match articles
-  that happen to use those words.
+  great for the beat terms AND for hyper-local area names ("Alexandria, VA"
+  verified live to return genuinely local results) — but NOT for "breaking"
+  or "world" as literal search words, which just match articles that happen
+  to use those words.
 - FEEDS (data/google_news_feeds.json) — Google's own curated feeds (top
   stories, topic sections) for exactly that "breaking"/"world" need. Topic
   sections use an opaque per-topic token (not a human name) that changed
@@ -36,6 +36,7 @@ import requests
 from .. import applog
 from ..config import DATA_DIR
 from ..models import Item
+from .report import FetchReport
 
 log = applog.get(__name__)
 
@@ -46,7 +47,7 @@ WORLD_TOPIC_TOKEN = "CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx1YlY4U0FtVnVHZ0pWVXlnQVAB"
 # human-readable name (an old "?topic=WORLD"-style URL 404s/returns empty --
 # found live 2026-07-24). Extracted from news.google.com's own nav links for
 # the en-US/US locale; stable for that locale, not per-session. Offered as
-# presets on the keyword management page so the user never has to hunt one down.
+# presets on the keyword management page so the operator never has to hunt one down.
 TOPIC_TOKENS = {
     "World": WORLD_TOPIC_TOKEN,
     "U.S.": "CAAqIggKIhxDQkFTRHdvSkwyMHZNRGxqTjNjd0VnSmxiaWdBUAE",
@@ -64,12 +65,12 @@ _TAGS = re.compile(r"<[^>]+>")
 KEYWORDS_PATH = DATA_DIR / "google_news_keywords.json"
 FEEDS_PATH = DATA_DIR / "google_news_feeds.json"
 
-# The seed list a fresh install starts with -- edit config/profile.yaml for
-# your own interests, or use the keyword management page (GET /keywords) to
-# add/remove these live, no restart needed. Local-area terms (a city/region
-# name) work fine as plain search here, verified live to return genuinely
-# hyper-local results -- unlike "breaking"/"world", which need Google's own
-# curated feeds (below), not a literal keyword search for those words.
+# Same beat newsapi.py targeted -- the seed list a fresh install starts with;
+# the keyword management page lets the operator add/remove from here on. Local-area
+# terms (Alexandria/DC) work fine as plain search here -- verified live,
+# genuinely hyper-local results ("Alexandria police...", "ALXnow") -- unlike
+# "breaking"/"world", which need Google's own curated feeds (below), not a
+# literal keyword search for those words.
 DEFAULT_KEYWORDS = [
     "defense contract",
     "intelligence agency",
@@ -79,6 +80,7 @@ DEFAULT_KEYWORDS = [
     "artificial intelligence",
     "sanctions",
     "military",
+    "Alexandria, VA",
     "Washington, DC",
 ]
 
@@ -215,7 +217,16 @@ def _parse_entries(feed, count: int) -> list[Item]:
     return items
 
 
-def _fetch_url(url: str, params: dict, count: int, timeout: float, label: str) -> list[Item]:
+def _fetch_url(
+    url: str,
+    params: dict,
+    count: int,
+    timeout: float,
+    label: str,
+    report: FetchReport | None = None,
+) -> list[Item]:
+    if report is not None:
+        report.attempt()
     try:
         resp = requests.get(
             url, params=params, timeout=timeout, headers={"User-Agent": _UA}
@@ -224,21 +235,28 @@ def _fetch_url(url: str, params: dict, count: int, timeout: float, label: str) -
         feed = feedparser.parse(resp.content)
     except Exception as exc:  # noqa: BLE001 — one bad feed/keyword shouldn't cost the rest
         log.error("Google News RSS (%r) FAILED (%r)", label, exc)
+        if report is not None:
+            report.fail(f"{label}: {exc!r}")
         return []
     return _parse_entries(feed, count)
 
 
-def _fetch_keyword(keyword: str, count: int, timeout: float) -> list[Item]:
+def _fetch_keyword(
+    keyword: str, count: int, timeout: float, report: FetchReport | None = None
+) -> list[Item]:
     return _fetch_url(
         SEARCH_URL,
         {"q": keyword, "hl": "en-US", "gl": "US", "ceid": "US:en"},
         count,
         timeout,
         keyword,
+        report,
     )
 
 
-def _fetch_feed(feed: dict, count: int, timeout: float) -> list[Item]:
+def _fetch_feed(
+    feed: dict, count: int, timeout: float, report: FetchReport | None = None
+) -> list[Item]:
     url = _feed_url(feed)
     if not url:
         return []
@@ -248,6 +266,7 @@ def _fetch_feed(feed: dict, count: int, timeout: float) -> list[Item]:
         count,
         timeout,
         feed.get("label") or feed.get("type", "feed"),
+        report,
     )
 
 
@@ -256,16 +275,18 @@ def fetch(
     count_per_keyword: int = 8,
     timeout: float = _FETCH_TIMEOUT,
     include_feeds: bool = True,
+    report: FetchReport | None = None,
 ) -> list[Item]:
     """Recent Google News RSS results for each keyword PLUS each named feed
     (top stories, topic sections) as Items. One request per keyword/feed
     (Google News RSS has no multi-keyword OR syntax like GDELT/Event
     Registry did) -- fail-soft per source, so one bad query just contributes
-    nothing while the rest still run."""
+    nothing while the rest still run. `report`, when given, counts every
+    request and every failure (N19)."""
     items: list[Item] = []
-    for kw in (keywords if keywords is not None else load_keywords()):
-        items.extend(_fetch_keyword(kw, count_per_keyword, timeout))
+    for kw in keywords if keywords is not None else load_keywords():
+        items.extend(_fetch_keyword(kw, count_per_keyword, timeout, report))
     if include_feeds:
         for feed in load_feeds():
-            items.extend(_fetch_feed(feed, count_per_keyword, timeout))
+            items.extend(_fetch_feed(feed, count_per_keyword, timeout, report))
     return items

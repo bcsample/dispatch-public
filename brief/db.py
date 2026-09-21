@@ -35,7 +35,9 @@ CREATE TABLE IF NOT EXISTS feedback (
 );
 -- embeddings table reserved for the memory layer (next increment)
 CREATE TABLE IF NOT EXISTS embeddings (
-    content_hash TEXT PRIMARY KEY, vector BLOB, created_at TEXT DEFAULT (datetime('now'))
+    content_hash TEXT PRIMARY KEY,
+    vector BLOB,
+    created_at TEXT DEFAULT (datetime('now'))
 );
 -- world delta: last-seen state per feed record, so the ingestor can diff sweeps
 CREATE TABLE IF NOT EXISTS feed_snapshots (

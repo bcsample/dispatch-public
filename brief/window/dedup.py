@@ -1,11 +1,12 @@
-"""Embeddings-based dedup/clustering for the news firehose. Collapses
-near-duplicate headlines ("the same story from 5 sources") into one
-representative row with the sources aggregated, so the firehose reads as
-signal.
+"""v4.1 — embeddings dedup/cluster for the news firehose (WORLD_DELTA_BUILD_PLAN.md's
+"v4" section, "V4.1 — Embeddings dedup/cluster"). Collapses near-duplicate
+headlines ("the same story from 5 sources") into one representative row with
+the sources aggregated, so the firehose reads as signal.
 
-Uses `nomic-embed-text` via Ollama — small (274MB) and cheap enough to run
-on the ~10min news-fetch cadence without significant memory pressure. Off
-the 10s poll entirely: only `NewsLoop.run_one_fetch` (service.py) calls
+Uses `nomic-embed-text` via Ollama — already pulled, 274MB, small enough to run
+on the ~10min news-fetch cadence without the memory-pressure risk a bigger
+model would carry next to ComfyUI/Studio (see ).
+Off the 10s poll entirely: only `NewsLoop.run_one_fetch` (service.py) calls
 into this module. `/api/status`, `/api/health`, `/api/deltas`, `/api/current`
 never touch Ollama.
 
@@ -25,11 +26,13 @@ from .. import modelroles
 from ..config import OLLAMA_HOST
 
 HOST = OLLAMA_HOST
-# DEDUP_EMBED_MODEL always wins outright if set (never even asks a model
-# registry); otherwise resolve role "embed" via modelroles (optional --
-# falls back to the nomic-embed-text default below if none is configured).
+# Helm 2c: DEDUP_EMBED_MODEL always wins outright if set (never even asks
+# the host monitor); otherwise resolve role "embed" (cached, falls back to the
+# nomic-embed-text default below if the host monitor's unreachable).
 _MODEL_DEFAULT = "nomic-embed-text"
-MODEL = os.environ.get("DEDUP_EMBED_MODEL") or modelroles.resolve("embed", _MODEL_DEFAULT)
+MODEL = os.environ.get("DEDUP_EMBED_MODEL") or modelroles.resolve(
+    "embed", _MODEL_DEFAULT
+)
 
 # Calibrated 2026-07-16 against nomic-embed-text: known-duplicate headline
 # pairs measured 0.81-0.91 cosine similarity; unrelated pairs measured
@@ -60,7 +63,16 @@ def embed(texts: list[str]) -> list[list[float]] | None:
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
+    # Equal length is an invariant here (one batched embed() call, one model),
+    # so a mismatch is an impossible state rather than an input to handle. It
+    # still returns 0.0 instead of raising, because this runs in the live sweep
+    # and the module's contract is that clustering degrades, never crashes --
+    # 0.0 means "not similar", so the pair falls through as singletons. The
+    # guard is what makes strict=True below unreachable rather than a new way
+    # for a sweep to die.
+    if len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
     if norm_a == 0 or norm_b == 0:

@@ -1,5 +1,5 @@
-"""The voice's silence rules (brief/window/quiet.py) — the user's hard rule is
-that it must never read anything out while you're in a meeting."""
+"""The voice's silence rules (brief/window/quiet.py) — the operator's hard rule is
+that it must never read anything out while he's in a meeting."""
 
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def test_speaks_when_nothing_is_blocking(tmp_path, monkeypatch):
 
 
 def test_weekends_silence_the_voice_when_weekdays_only(tmp_path, monkeypatch):
-    # the user's rule: no voice on the weekend. Sat 2026-07-18 / Sun 2026-07-19.
+    # the operator's rule: no voice on the weekend. Sat 2026-07-18 / Sun 2026-07-19.
     monkeypatch.setattr(quiet, "mic_in_use", lambda: False)
     monkeypatch.setattr(quiet, "focus_active", lambda path=None: False)
     mute = tmp_path / "mute"
@@ -74,7 +74,7 @@ def test_weekends_silence_the_voice_when_weekdays_only(tmp_path, monkeypatch):
 
 
 def test_calendar_meeting_silences_the_voice(tmp_path, monkeypatch):
-    # the user: mic-in-use alone missed the case where call audio doesn't route
+    # the operator: mic-in-use alone missed the case where call audio doesn't route
     # through this machine, or the meeting has JUST started (the bulletin's
     # own :00/:30 cadence collides with a meeting starting on the hour).
     monkeypatch.setattr(quiet, "mic_in_use", lambda: False)
@@ -216,31 +216,31 @@ def test_voice_endpoint_and_mute_button_round_trip(tmp_path, monkeypatch):
         assert v2["muted"] is False and v2["can_speak"] is True
 
 
-# --- the external voice agent handoff -------------------------------------
+# --- the Jarvis handoff -----------------------------------------------------
 
 
-def test_external_agent_claim_defers_then_expires(tmp_path, monkeypatch):
-    claim = tmp_path / "voice_claim_external"
-    assert quiet.external_agent_has_voice(claim) is False  # no claim -> we speak
+def test_jarvis_claim_defers_then_expires(tmp_path, monkeypatch):
+    claim = tmp_path / "voice_claim_jarvis"
+    assert quiet.jarvis_has_voice(claim) is False  # no claim -> we speak
 
-    claim.write_text("")  # external voice agent heartbeats
-    assert quiet.external_agent_has_voice(claim) is True
+    claim.write_text("")  # Jarvis heartbeats
+    assert quiet.jarvis_has_voice(claim) is True
 
-    # A stale heartbeat (the external agent died / was killed to protect a render) hands
+    # A stale heartbeat (Jarvis died / was killed to protect a render) hands
     # the voice straight back to the light speaker.
     import os
 
     old = time.time() - 300
     os.utime(claim, (old, old))
-    assert quiet.external_agent_has_voice(claim, max_age_seconds=120) is False
+    assert quiet.jarvis_has_voice(claim, max_age_seconds=120) is False
 
 
-def test_quiet_reason_defers_to_external_agent(tmp_path, monkeypatch):
+def test_quiet_reason_defers_to_jarvis(tmp_path, monkeypatch):
     monkeypatch.setattr(quiet, "mic_in_use", lambda: False)
     monkeypatch.setattr(quiet, "focus_active", lambda path=None: False)
-    claim = tmp_path / "voice_claim_external"
+    claim = tmp_path / "voice_claim_jarvis"
     claim.write_text("")
     reason = quiet.quiet_reason(
-        datetime(2026, 7, 20, 12, 0), tmp_path / "mute", voice_claim_path=claim
+        datetime(2026, 7, 20, 12, 0), tmp_path / "mute", jarvis_claim_path=claim
     )
-    assert reason == "an external voice agent has the voice"
+    assert reason == "Jarvis has the voice"

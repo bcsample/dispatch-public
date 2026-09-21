@@ -1,21 +1,35 @@
-feedparser
+# feedparser floor: UP-1 5/6, 2026-09-14, after a fixed-snapshot bake-off (54 feeds,
+# 2,532 items, 0 differences vs 6.0.12). 6.0.13+ swaps sgmllib3k for feedparser-sgmllib.
+feedparser>=6.0.14
 pyyaml
 pytest
 requests
-fastapi
+# fastapi/starlette floors: UP-1 4/6, 2026-09-14. starlette 1.5.1 hardened FileResponse
+# ranges, which /static relies on; tests/test_static_ranges.py pins the behaviour.
+fastapi>=0.141.1
+starlette>=1.6.0
 uvicorn
 httpx
 # The Jarvis voice (brief/window/kokoro_tts.py): local neural TTS. Pinned to
-# 0.2.3 to match the voices.json weights shared with project-jarvis — newer
+# 0.2.3 to match the voices.json weights shared with the voice assistant project — newer
 # kokoro-onnx expects a different voices format. Optional at runtime: the
 # speaker falls back to macOS `say` if this isn't installed.
 kokoro-onnx==0.2.3
-# Calendar meeting check (brief/window/calendar_check.py): imports project-
-# jarvis's src/jarvis/google_sync.py directly (sys.path reuse of its already-
-# authorized, encrypted read-only Google Calendar tokens -- no separate OAuth
-# setup). Versions pinned to match project-jarvis's pyproject.toml exactly.
+# Calendar meeting check (brief/window/calendar_check.py -> google_sync.py):
+# Dispatch's OWN read-only, multi-account Google Calendar credential (P1-C).
 # Optional at runtime: calendar_check fails soft to "no meeting" if missing.
+#
+# CORRECTION 2026-09-13: this comment used to say calendar_check "imports
+# the voice assistant project's src/jarvis/google_sync.py directly" and that these versions
+# were "pinned to match the voice assistant project's pyproject.toml exactly". Superseded by
+# P1-C on 2026-09-08, and the borrowed import had already been BROKEN since
+# 2026-08-24: the voice assistant project 7946b58 made jarvis.google_sync import jarvis_core,
+# which Dispatch's interpreter cannot find, so the fail-soft returned "no meeting"
+# on every call for ~3 weeks. The pins below are Dispatch's own now; upgrade
+# guidance is in UPDATES_2026-09-13.md (hold until CAL-1 proves consent).
 google-api-python-client==2.197.0
 google-auth-oauthlib==1.4.0
 google-auth-httplib2==0.4.0
-cryptography>=48.0.1
+# cryptography: floor raised 2026-09-14 (UP-1 3/6) to the release that fixes
+# CVE-2026-69247 (PKCS#7, unused here; secretbox is AES-GCM). Tested at 50.0.1.
+cryptography>=50.0.1

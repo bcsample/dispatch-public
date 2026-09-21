@@ -7,14 +7,10 @@ Sources (fetched once, at generation time only):
   - District of Columbia: PublicaMundi all-states (coarse, but DC is a small
     diamond so a few points suffice)
 
-We keep only the points near Washington, DC (padded bbox) and split each ring
-into polylines at gaps, so the output is tiny (a few hundred [lat,lon]
-points). The dashboard projects them client-side with the same px() the
-aircraft use, and the SVG viewport clips anything past the drawn box.
-
-Centered on DC by default to match config/window.yaml's flights_lat/lon --
-if you move that default, re-run this with a matching LAT_MIN/MAX/LON_MIN/MAX
-below so the borders still reach your radar box.
+We keep only the points near Alexandria (padded bbox) and split each ring into
+polylines at gaps, so the output is tiny (a few hundred [lat,lon] points). The
+dashboard projects them client-side with the same px() the aircraft use, and
+the SVG viewport clips anything past the drawn box.
 
 Run once (re-run only to widen the area or refresh the data):
     .venv/bin/python scripts/generate_radar_boundaries.py
@@ -36,9 +32,8 @@ OUT = (
 )
 
 # Keep-box: just past the 30nm radar edges (lat ±0.5°, lon ±0.63° around
-# Washington, DC) so border lines reach the drawn edges without hauling in
-# the far Chesapeake shoreline (which would only bloat the file, then get
-# SVG-clipped).
+# Alexandria) so border lines reach the drawn edges without hauling in the far
+# Chesapeake shoreline (which would only bloat the file, then get SVG-clipped).
 LAT_MIN, LAT_MAX = 38.25, 39.45
 LON_MIN, LON_MAX = -77.77, -76.31
 

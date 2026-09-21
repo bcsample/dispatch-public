@@ -1,6 +1,6 @@
 """Convergence detection — the deepest intel signal: 3+ independent channels
 (a structured world-feed event, general news volume, an anomalous coverage
-spike, and/or the user's own curated professional beat) all pointing at the
+spike, and/or the operator's own curated professional beat) all pointing at the
 same ~1-degree patch of the map within 24h."""
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 """_is_speakable() -- excludes headlines in a non-Latin script from being
-spoken (the user, 2026-07-21: "one of the sources was in Arabic or Farsi, and
+spoken (the operator, 2026-07-21: "one of the sources was in Arabic or Farsi, and
 the system really choked on that"). Board/ticker display is unaffected;
 only speech-selection points check this."""
 

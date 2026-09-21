@@ -5,7 +5,7 @@ lets new ingestors bolt on without touching the rest of the pipeline."""
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
 

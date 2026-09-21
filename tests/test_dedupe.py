@@ -1,5 +1,5 @@
-from brief.models import Item
 from brief.dedupe import dedupe
+from brief.models import Item
 
 
 def _i(url, title="t"):

@@ -9,7 +9,7 @@ first_seen store, curation, surge, alerts. English-filtered by default
 GDELT rate-limits to ~1 request / 5s and answers throttling with either a
 real HTTP 429 or a 200 with a plaintext notice (not JSON) — the news loop
 calls this once per ~10-min cycle, so day-to-day this shouldn't hit that
-limit, but Fable's full-log scan (2026-07-28) found 755 429s in the wild
+limit, but the architecture review's full-log scan (2026-07-28) found 755 429s in the wild
 (GDELT is a free shared-IP endpoint; something else can trip its limiter).
 fetch() returns None (not []) specifically for a rate-limit signal so
 NewsLoop can back off calling GDELT for a few cycles instead of retrying
@@ -26,6 +26,7 @@ import requests
 
 from .. import applog
 from ..models import Item
+from .report import FetchReport
 
 log = applog.get(__name__)
 
@@ -54,12 +55,17 @@ def fetch(
     timespan: str = "1h",
     max_records: int = 75,
     timeout: float = 25,
+    report: FetchReport | None = None,
 ) -> list[Item] | None:
     """Recent GDELT articles for `query` as Items, newest-first. Returns None
     specifically when GDELT is signaling rate-limiting (a real 429, or the
     200-with-plaintext throttle notice) so the caller can back off; any OTHER
     failure (network error, timeout, unexpected JSON shape) fails soft to []
-    same as before -- only a rate-limit signal is worth backing off for."""
+    same as before -- only a rate-limit signal is worth backing off for.
+    `report`, when given, records that other failure (N19); a rate-limit is
+    already visible to the caller as None and is not counted as one."""
+    if report is not None:
+        report.attempt()
     try:
         resp = requests.get(
             DOC_URL,
@@ -85,6 +91,8 @@ def fetch(
         articles = resp.json().get("articles") or []
     except Exception as exc:  # noqa: BLE001 — fail-soft: fall back to RSS only
         log.error("GDELT fetch FAILED (%r)", exc)
+        if report is not None:
+            report.fail(repr(exc))
         return []
 
     items: list[Item] = []

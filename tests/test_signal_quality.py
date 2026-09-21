@@ -45,7 +45,7 @@ def test_beat_scores_persist_and_reload():
 
 
 def test_news_loop_reapplies_beat_when_curation_skips(monkeypatch):
-    def fake_rss(sources):
+    def fake_rss(sources, **k):
         return [
             Item(
                 source_name="S",

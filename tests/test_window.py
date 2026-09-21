@@ -1,5 +1,6 @@
-"""Dashboard tests — the status-endpoint shape (any external monitoring tool
-would build against this exact contract), plus the feed-scope filter. Uses an empty world_feeds list
+"""Open Window (v1) tests — the status-endpoint shape (the host monitor's dial
+builds against this exact contract, WORLD_DELTA_BUILD_PLAN.md's "Open Window
+(v1)" section) plus the v1 feed-scope filter. Uses an empty world_feeds list
 when exercising the live FastAPI app so the sweep loop's real sweep is a
 network-free no-op, keeping these tests offline and deterministic.
 """
@@ -104,8 +105,8 @@ def test_status_before_first_sweep_reports_ok_true_with_null_last_sweep():
 
 
 # ---------------------------------------------------------------------------
-# current-state retention (WindowState.current) + the news loop
-# (WindowState.news / service.NewsLoop).
+# v2 — current-state retention (WindowState.current) + the news loop
+# (WindowState.news / service.NewsLoop). WORLD_DELTA_BUILD_PLAN.md, "v2".
 # ---------------------------------------------------------------------------
 
 
@@ -133,7 +134,7 @@ def test_window_state_news_snapshot_defaults_empty_and_updates():
 
 
 def test_news_loop_run_one_fetch_populates_state_newest_first(monkeypatch):
-    def fake_fetch_all(sources):
+    def fake_fetch_all(sources, **k):
         return [
             Item(
                 source_name="S",
@@ -198,7 +199,7 @@ def test_news_loop_stamps_first_seen_from_store(tmp_path, monkeypatch):
     monkeypatch.setattr(service.db, "DATA_DIR", tmp_path)
     monkeypatch.setattr(service.db, "DB_PATH", tmp_path / "brief.db")
 
-    def fake_fetch_all(sources):
+    def fake_fetch_all(sources, **k):
         return [
             Item(
                 source_name="S",
@@ -222,7 +223,7 @@ def test_news_loop_stamps_first_seen_from_store(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# dispatch-alerts-v1 — the live breaking feed for voice consumers.
+# dispatch-alerts-v1 — the live breaking feed for voice consumers (Jarvis).
 # Fixed contract, same discipline as /api/status: version-bump on breaking
 # change, never silently reshape.
 # ---------------------------------------------------------------------------
@@ -233,7 +234,8 @@ def _seed_world_item(title, severity, first_seen_sql="datetime('now')"):
     try:
         con.execute(
             "INSERT INTO items (content_hash, source_name, source_type, title, "
-            f"severity, first_seen) VALUES (?, 'USGS', 'world', ?, ?, {first_seen_sql})",
+            "severity, first_seen) "
+            f"VALUES (?, 'USGS', 'world', ?, ?, {first_seen_sql})",
             (f"h-{title}", title, severity),
         )
         con.commit()
@@ -261,7 +263,7 @@ def test_build_alerts_world_severity_and_recency_rules():
 
 
 def test_world_alert_non_latin_title_still_boards_but_never_speaks():
-    # the user, 2026-07-21: "one of the sources was in Arabic or Farsi, and the
+    # the operator, 2026-07-21: "one of the sources was in Arabic or Farsi, and the
     # system really choked on that" -- world alerts are otherwise ALWAYS
     # speak_worthy (they're already floored at severity), except this.
     _seed_world_item("New: الشرق الأوسط يشهد توترات جديدة", 7.0)
@@ -333,7 +335,7 @@ def test_news_loop_clusters_dupes_when_dedup_enabled(monkeypatch):
     # dicts before caching them, gated on dedup_enabled (WORLD_DELTA_BUILD_
     # PLAN.md's "v4" section). Stub both rss.fetch_all and dedup.cluster so
     # this test never touches the network or Ollama.
-    def fake_fetch_all(sources):
+    def fake_fetch_all(sources, **k):
         return [
             Item(
                 source_name="S",
@@ -372,7 +374,7 @@ def test_news_loop_clusters_dupes_when_dedup_enabled(monkeypatch):
 
 
 def test_news_loop_skips_clustering_when_dedup_disabled(monkeypatch):
-    def fake_fetch_all(sources):
+    def fake_fetch_all(sources, **k):
         return [
             Item(
                 source_name="S",
@@ -409,7 +411,7 @@ def test_news_loop_fail_soft_when_ollama_down_headlines_still_populate(monkeypat
     # v4.1 fail-soft proof: dedup.embed() (and therefore cluster()) hitting a
     # real connection error still leaves the news loop populating headlines,
     # unclustered singletons — the window works with Ollama down.
-    def fake_fetch_all(sources):
+    def fake_fetch_all(sources, **k):
         return [
             Item(
                 source_name="S",
@@ -449,7 +451,7 @@ def test_news_loop_fetch_failure_keeps_previous_headlines(monkeypatch):
         [{"title": "Old", "source_name": "S", "url": "u", "published_at": ""}]
     )
 
-    def boom(sources):
+    def boom(sources, **k):
         raise RuntimeError("rss boom")
 
     monkeypatch.setattr(service.rss, "fetch_all", boom)
@@ -487,8 +489,9 @@ def test_live_app_current_and_news_endpoints_empty_when_nothing_configured():
 
 
 # ---------------------------------------------------------------------------
-# the news firehose roster loader (config/news_firehose.yaml, falling
+# v3 — the news firehose roster loader (config/news_firehose.yaml, falling
 # back to sources.yaml) and the /api/news last-N-hours filter.
+# WORLD_DELTA_BUILD_PLAN.md, "v3" section.
 # ---------------------------------------------------------------------------
 
 
@@ -618,7 +621,7 @@ def test_static_mount_serves_the_bundled_land_geojson():
 
 
 def test_static_js_urls_are_cache_busted_and_still_load(tmp_path, monkeypatch):
-    # the user's wall kept a pre-deploy JS file alive after a real edit (no
+    # the operator's wall kept a pre-deploy JS file alive after a real edit (no
     # Cache-Control from StaticFiles -> browser heuristic caching). Stamping
     # each <script> URL with that file's mtime (?v=...) means an edit is a
     # genuinely new URL, so there's nothing stale to serve.
@@ -639,7 +642,9 @@ def test_static_js_urls_are_cache_busted_and_still_load(tmp_path, monkeypatch):
 
     # A file with no real mtime (missing) falls back to the un-busted tag
     # rather than raising — this is decorative, must never break page load.
-    html2 = app_module._cache_bust_js('<script src="/static/js/does-not-exist.js"></script>')
+    html2 = app_module._cache_bust_js(
+        '<script src="/static/js/does-not-exist.js"></script>'
+    )
     assert html2 == '<script src="/static/js/does-not-exist.js"></script>'
 
 
@@ -689,13 +694,17 @@ def test_google_news_feeds_and_topics_api(tmp_path, monkeypatch):
             "/api/google_news/feeds/add",
             params={"label": "Business", "feed_type": "topic", "value": "TOK123"},
         ).json()
-        assert {"label": "Business", "type": "topic", "value": "TOK123"} in added["feeds"]
+        assert {"label": "Business", "type": "topic", "value": "TOK123"} in added[
+            "feeds"
+        ]
 
         removed = client.post(
             "/api/google_news/feeds/remove",
             params={"feed_type": "topic", "value": "TOK123"},
         ).json()
-        assert {"label": "Business", "type": "topic", "value": "TOK123"} not in removed["feeds"]
+        assert {"label": "Business", "type": "topic", "value": "TOK123"} not in removed[
+            "feeds"
+        ]
 
 
 def test_keywords_page_serves_html():
@@ -732,7 +741,9 @@ def test_dashboard_html_fetches_land_once_and_leads_with_headlines():
         # defined in 05-map-news.js. Each tag is cache-busted with that file's
         # own mtime (?v=...) so a browser can't keep serving a pre-deploy
         # script after an edit — assert the path, not the exact query value.
-        assert re.search(r'<script src="/static/js/05-map-news\.js\?v=\d+"></script>', html)
+        assert re.search(
+            r'<script src="/static/js/05-map-news\.js\?v=\d+"></script>', html
+        )
         map_news_js = client.get("/static/js/05-map-news.js").text
         # Map GeoJSON is fetched by loadLand(), called exactly once, outside
         # the 10s poll() loop — not re-fetched on every poll. (loadLand now
@@ -805,7 +816,7 @@ def test_geo_locate_matches_places_prefers_specific_and_none_when_absent():
 
 
 # ---------------------------------------------------------------------------
-# Hardening (Fable review 2026-07-18): C2 content-hash, C1 thread health.
+# Hardening (architecture review review 2026-07-18): C2 content-hash, C1 thread health.
 # ---------------------------------------------------------------------------
 
 

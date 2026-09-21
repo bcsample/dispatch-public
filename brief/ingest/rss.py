@@ -11,6 +11,7 @@ import requests
 
 from .. import applog
 from ..models import Item
+from .report import FetchReport
 
 log = applog.get(__name__)
 
@@ -58,13 +59,20 @@ def fetch_source(source: dict, max_entries: int = 30) -> list[Item]:
     return items
 
 
-def fetch_all(sources: list[dict]) -> list[Item]:
+def fetch_all(sources: list[dict], report: FetchReport | None = None) -> list[Item]:
+    """Every source, fail-soft per source. `report`, when given, counts each
+    source tried and each that failed (N19) so the caller can tell a roster
+    that is entirely down from one that returned nothing new."""
     items: list[Item] = []
     for src in sources:
+        if report is not None:
+            report.attempt()
         try:
             got = fetch_source(src)
             items.extend(got)
             log.info("%s: %d items", src["name"], len(got))
         except Exception as exc:  # noqa: BLE001 — one bad feed shouldn't kill the run
             log.error("%s: FAILED (%r)", src["name"], exc)
+            if report is not None:
+                report.fail(f"{src['name']}: {exc!r}")
     return items

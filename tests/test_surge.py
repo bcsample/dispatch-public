@@ -88,7 +88,7 @@ def test_build_alerts_emits_surge_kind_from_news_articles():
 
 
 def test_surge_speak_names_a_representative_headline_when_available():
-    # the user: heard "N outlets reporting on Canada" with no idea what the story
+    # the operator: heard "N outlets reporting on Canada" with no idea what the story
     # was -- a surge alert must point at an example, not just a bare count.
     con = service.db.connect()
     try:

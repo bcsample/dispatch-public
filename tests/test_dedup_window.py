@@ -1,4 +1,5 @@
-"""v4.1 tests — near-duplicate headline clustering (brief/window/dedup.py,, "V4.1 — Embeddings dedup/cluster").
+"""v4.1 tests — near-duplicate headline clustering (brief/window/dedup.py,
+WORLD_DELTA_BUILD_PLAN.md's "v4" section, "V4.1 — Embeddings dedup/cluster").
 
 Uses a stubbed embedder (monkeypatched `dedup.embed`) so these tests are
 offline/deterministic and never call the real Ollama endpoint. Fixed vectors
@@ -8,6 +9,8 @@ regardless of the exact threshold.
 """
 
 from __future__ import annotations
+
+import pytest
 
 from brief.window import dedup
 
@@ -139,6 +142,18 @@ def test_embed_returns_none_on_malformed_response(monkeypatch):
 
     monkeypatch.setattr(dedup.requests, "post", lambda *a, **k: _FakeResp())
     assert dedup.embed(["hello"]) is None
+
+
+def test_cosine_on_mismatched_dimensions_degrades_instead_of_raising():
+    # Impossible in practice (one batched embed() call, one model), which is
+    # exactly why it needs a test: if it ever happens, the live sweep must fall
+    # through to singletons, not die. Asserts the degrade path the length guard
+    # in _cosine() exists to provide -- without it, zip(strict=True) would raise
+    # and take the sweep with it.
+    assert dedup._cosine([1.0, 0.0, 0.0], [1.0, 0.0]) == 0.0
+    assert dedup._cosine([1.0], [1.0, 0.0, 0.0]) == 0.0
+    # and the normal, equal-length path still computes a real similarity
+    assert dedup._cosine([1.0, 0.0], [1.0, 0.0]) == pytest.approx(1.0)
 
 
 def test_embed_empty_input_returns_empty_list_without_network_call(monkeypatch):

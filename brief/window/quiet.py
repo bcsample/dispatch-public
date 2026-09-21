@@ -1,6 +1,6 @@
 """When the Dispatch voice must stay silent.
 
-the user's rule: it must never read anything out while you're in a meeting. Layered
+the operator's rule: it must never read anything out while he's in a meeting. Layered
 signals, cheapest and most reliable first:
 
 1. **Manual mute** — a file (data/speaker_mute). An explicit "shut up" switch
@@ -9,12 +9,13 @@ signals, cheapest and most reliable first:
    kAudioDevicePropertyDeviceIsRunningSomewhere on the default input device.
    Catches Zoom / Teams / Meet / Webex / FaceTime / phone calls alike, with no
    per-app allowlist and no special permission.
-3. **Focus / Do Not Disturb active** — if you've set any Focus, respect it
+3. **Focus / Do Not Disturb active** — if he's set any Focus, respect it
    (~/Library/DoNotDisturb/DB/Assertions.json holds active assertions).
-4. **A calendar meeting is in progress** — an OPTIONAL Google Calendar
-   check (calendar_check.py; bring your own read-only integration, see its
-   docstring), for the cases mic-in-use can't see: call audio routed through
-   a different
+4. **A calendar meeting is in progress** — Google Calendar via Dispatch's OWN
+   read-only credential (P1-C, calendar_check.py; it used to borrow
+   the voice assistant project's tokens over a sys.path shim, and this line still said so
+   for a while after that stopped being true),
+   for the cases mic-in-use can't see: call audio routed through a different
    device, and the exact instant a scheduled meeting starts (which the
    bulletin's own :00/:30 cadence collides with by construction).
 5. **Quiet hours** — the existing overnight window.
@@ -131,28 +132,27 @@ def focus_active(path: Path | None = None) -> bool:
 
 
 def calendar_meeting_active() -> bool:
-    """True if your Google Calendar (via an optional integration you provide)
-    shows a meeting covering right now. Thin wrapper over
-    calendar_check.in_meeting_now() (its own module, independently
-    testable). Fail-soft: see calendar_check's docstring."""
+    """True if the operator's Google Calendar shows a meeting covering right now.
+    Thin wrapper over calendar_check.in_meeting_now() (its own module so the
+    cross-repo sys.path reuse of the voice assistant project's Google auth stays isolated
+    and independently testable). Fail-soft: see calendar_check's docstring."""
     from . import calendar_check
 
     return calendar_check.in_meeting_now()
 
 
-# --- 5. an external voice agent has the voice -----------------------------
+# --- 5. Jarvis has the voice -------------------------------------------------
 
 
-def external_agent_has_voice(claim_path: Path, max_age_seconds: float = 120) -> bool:
-    """True when an external voice agent is currently claiming the voice.
+def jarvis_has_voice(claim_path: Path, max_age_seconds: float = 120) -> bool:
+    """True when the voice assistant project is currently claiming the voice.
 
-    An external voice agent (if you run one) may be intermittent -- not
-    always up, and not something this speaker should fight with. The handoff
-    is a heartbeat file: while that agent is up and speaking it touches
-    `claim_path` at least once a minute; this light `say` speaker defers
-    while that file is fresh and automatically resumes when it goes stale.
-    No ports, no coupling, survives a restart on either side. If you don't
-    run any such agent, this is simply always False -- nothing to set up."""
+    Jarvis is intentionally intermittent (it must never fight ComfyUI for
+    memory), so it can't be the only voice. The handoff is a heartbeat file:
+    while Jarvis is up and speaking it touches `claim_path` at least once a
+    minute; this light `say` speaker defers while that file is fresh and
+    automatically resumes when it goes stale. No ports, no coupling, survives
+    a restart on either side. See JARVIS_VOICE_HANDOFF.md."""
     try:
         age = time.time() - claim_path.stat().st_mtime
         return age <= max_age_seconds
@@ -186,8 +186,10 @@ def display_idle_seconds() -> float:
 
 def display_probably_off(idle_minutes: float) -> bool:
     """True once the machine has been genuinely untouched long enough that
-    the monitor has almost certainly gone to sleep.
-    the user, 2026-08-04: "stop wasting compute... I don't need to hear odd
+    the monitor has almost certainly gone to sleep -- same idea as
+    dispatch-shell's DAYTIME_IDLE_LIMIT_SECONDS (20 min default there),
+    just a separate process/language so it can't share state directly.
+    the operator, 2026-08-04: "stop wasting compute... I don't need to hear odd
     voices from the basement" -- nobody's there to hear a scheduled
     bulletin if nobody's touched the machine in a while."""
     return display_idle_seconds() >= idle_minutes * 60
@@ -212,7 +214,7 @@ def quiet_reason(
     quiet_end: int = 8,
     respect_focus: bool = True,
     respect_mic: bool = True,
-    voice_claim_path: Path | None = None,
+    jarvis_claim_path: Path | None = None,
     weekdays_only: bool = False,
     respect_calendar: bool = True,
     respect_display_idle: bool = False,
@@ -227,8 +229,8 @@ def quiet_reason(
         return "Focus/Do Not Disturb is on"
     if respect_calendar and calendar_meeting_active():
         return "a calendar meeting is in progress"
-    if voice_claim_path is not None and external_agent_has_voice(voice_claim_path):
-        return "an external voice agent has the voice"
+    if jarvis_claim_path is not None and jarvis_has_voice(jarvis_claim_path):
+        return "Jarvis has the voice"
     if weekdays_only and now.weekday() >= 5:  # 5=Sat, 6=Sun
         return "weekend"
     if in_quiet_hours(now, quiet_start, quiet_end):

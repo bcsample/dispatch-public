@@ -67,7 +67,7 @@ def test_fetch_returns_none_on_throttle_text(monkeypatch):
 
 
 def test_fetch_returns_none_on_real_429(monkeypatch):
-    # Fable's full-log scan (2026-07-28) found 755 real 429s in the wild --
+    # the architecture review's full-log scan (2026-07-28) found 755 real 429s in the wild --
     # this is the other throttle signal, distinct from the 200-plaintext one.
     monkeypatch.setattr(
         gdelt.requests, "get", lambda *a, **k: _Resp(None, status_code=429)
@@ -86,7 +86,7 @@ def test_fetch_fail_soft_on_exception(monkeypatch):
 def test_news_loop_appends_gdelt_items(monkeypatch):
     from brief.models import Item
 
-    def fake_rss(sources):
+    def fake_rss(sources, **k):
         return [
             Item(
                 source_name="RSS",
@@ -97,7 +97,7 @@ def test_news_loop_appends_gdelt_items(monkeypatch):
             )
         ]
 
-    def fake_gdelt(query, timespan, max_records):
+    def fake_gdelt(query, timespan, max_records, **k):
         return [
             Item(
                 source_name="gdelt.com",
@@ -130,7 +130,7 @@ def test_news_loop_skips_gdelt_when_disabled(monkeypatch):
     monkeypatch.setattr(
         service.rss,
         "fetch_all",
-        lambda s: [
+        lambda s, **k: [
             Item(source_name="RSS", source_type="news", title="R", url="http://r/1")
         ],
     )
@@ -151,20 +151,22 @@ def test_news_loop_skips_gdelt_when_disabled(monkeypatch):
     assert [h["title"] for h in state.news_snapshot()] == ["R"]
 
 
-# --- GDELT backoff (2026-07-28, Fable's log-scan: 755 real 429s in the wild) -
+# --- GDELT backoff (2026-07-28, the architecture review's log-scan: 755 real 429s in the wild) -
 
 
 def test_gdelt_rate_limit_triggers_exponential_backoff(monkeypatch):
-    monkeypatch.setattr(service.rss, "fetch_all", lambda s: [])
+    monkeypatch.setattr(service.rss, "fetch_all", lambda s, **k: [])
     calls = {"n": 0}
 
-    def rate_limited(query, timespan, max_records):
+    def rate_limited(query, timespan, max_records, **k):
         calls["n"] += 1
         return None  # every call gets rate-limited
 
     monkeypatch.setattr(service.gdelt, "fetch", rate_limited)
     state = service.WindowState(sweep_interval_seconds=900)
-    loop = service.NewsLoop([], state, interval_seconds=5, dedup_enabled=False, gdelt_enabled=True)
+    loop = service.NewsLoop(
+        [], state, interval_seconds=5, dedup_enabled=False, gdelt_enabled=True
+    )
 
     loop.run_one_fetch()  # 1st rate-limit -> backoff = 2**1 = 2 cycles
     assert calls["n"] == 1
@@ -183,18 +185,22 @@ def test_gdelt_rate_limit_triggers_exponential_backoff(monkeypatch):
 def test_gdelt_success_resets_backoff_state(monkeypatch):
     from brief.models import Item
 
-    monkeypatch.setattr(service.rss, "fetch_all", lambda s: [])
+    monkeypatch.setattr(service.rss, "fetch_all", lambda s, **k: [])
     state = service.WindowState(sweep_interval_seconds=900)
-    loop = service.NewsLoop([], state, interval_seconds=5, dedup_enabled=False, gdelt_enabled=True)
+    loop = service.NewsLoop(
+        [], state, interval_seconds=5, dedup_enabled=False, gdelt_enabled=True
+    )
 
-    monkeypatch.setattr(service.gdelt, "fetch", lambda query, timespan, max_records: None)
+    monkeypatch.setattr(
+        service.gdelt, "fetch", lambda query, timespan, max_records, **k: None
+    )
     loop.run_one_fetch()
     assert loop._gdelt_consecutive_ratelimits == 1
 
     monkeypatch.setattr(
         service.gdelt,
         "fetch",
-        lambda query, timespan, max_records: [
+        lambda query, timespan, max_records, **k: [
             Item(source_name="g", source_type="news", title="G", url="http://g/1")
         ],
     )
@@ -208,10 +214,14 @@ def test_gdelt_success_resets_backoff_state(monkeypatch):
 
 
 def test_gdelt_feed_health_marked_down_on_rate_limit(monkeypatch):
-    monkeypatch.setattr(service.rss, "fetch_all", lambda s: [])
-    monkeypatch.setattr(service.gdelt, "fetch", lambda query, timespan, max_records: None)
+    monkeypatch.setattr(service.rss, "fetch_all", lambda s, **k: [])
+    monkeypatch.setattr(
+        service.gdelt, "fetch", lambda query, timespan, max_records, **k: None
+    )
     state = service.WindowState(sweep_interval_seconds=900)
-    loop = service.NewsLoop([], state, interval_seconds=5, dedup_enabled=False, gdelt_enabled=True)
+    loop = service.NewsLoop(
+        [], state, interval_seconds=5, dedup_enabled=False, gdelt_enabled=True
+    )
     loop.run_one_fetch()
     health = {f["name"]: f for f in service.compute_feed_health(state)}
     assert health["GDELT"]["bucket"] == "error"

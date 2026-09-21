@@ -1,5 +1,7 @@
 """The Dispatch's voice: poll /api/alerts (dispatch-alerts-v1) and speak the
-genuinely important things aloud.
+genuinely important things aloud — the first live wire of the "Jarvis tells me"
+north star. the voice assistant project's persona layer can absorb this later; the alert
+contract it consumes won't change.
 
 NEVER interrupts a meeting. Before speaking it checks brief.window.quiet:
 manual mute file > microphone in use (any call app) > Focus/Do Not Disturb >
@@ -10,34 +12,42 @@ Reads on a SCHEDULE, not at random: a short bulletin at the top and bottom of
 the hour (speak_schedule_minutes). Speak-worthy alerts accumulate between slots
 and are delivered as one batch, so the wall is predictable.
 
-The lead-in ("Top of the hour") used to play instantly, then the news paused
-for a beat while Kokoro rendered it. maybe_prerender() synthesizes the whole
-bulletin ~30s early (PRELOAD_SECONDS) and caches it in kokoro_tts, so at the
-slot itself it's cache-hit playback the whole way through — no mid-bulletin
+the operator: the lead-in ("Top of the hour") used to play instantly, then the news
+paused for a beat while Kokoro rendered it. maybe_prerender() synthesizes the
+whole bulletin ~30s early (PRELOAD_SECONDS) and caches it in kokoro_tts, so at
+the slot itself it's cache-hit playback the whole way through — no mid-bulletin
 gap. A cache miss (config changed, or one more alert snuck in during that last
 30s) just falls back to live synthesis for that one clip, same as before.
 
 Other manners:
 - First run says nothing (no backlog replay on restart).
 - At most MAX_UTTERANCES per bulletin; the rest collapse into "plus N more".
-- A bulletin missed because you're in a meeting is SKIPPED, not stacked onto
-  the next one.
-- Speaks with Kokoro (`bm_george`, a LOCAL neural model — see
-  brief/window/kokoro_tts.py). Falls back to macOS `say` (Daniel) if the
-  model is disabled/absent, so the wall is never muted.
+- A bulletin missed because he's in a meeting is SKIPPED, not stacked onto the
+  next one.
+- Speaks in the Jarvis voice — Kokoro `bm_george`, a LOCAL neural model shared
+  with the voice assistant project (brief/window/kokoro_tts.py). Falls back to macOS `say`
+  (Daniel) if the model is disabled/absent, so the wall is never muted.
 
 Run directly or via launchd (com.local.dispatch-speaker.plist):
     .venv/bin/python scripts/dispatch_speak.py
 Silence it any time:   touch data/speaker_mute      (rm to re-enable)
+
+Visible (HS-5, 2026-09-14). This is the repo's second live process and has no
+endpoint, so it publishes itself two ways: a stamp file (data/speaker_stamp.json:
+pid, started_at, the git sha it loaded, interpreter, and a per-poll heartbeat)
+written at start and after every poll, and its own persistent log
+(data/logs/speaker.log, not the engine's brief.log and not /tmp).
+`scripts/speaker_status.py` reads the stamp against launchd for the hygiene line.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -45,7 +55,17 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))  # so `brief.window.quiet` imports when run as a script
 
+if __name__ == "__main__":
+    # Before ANY brief import: kokoro_tts configures logging at import time, and
+    # this process must never attach a second rotating handler to the engine's
+    # brief.log. Only when run as the daemon; importing this module (tests)
+    # leaves the environment alone.
+    os.environ["BRIEF_LOG_FILE"] = "speaker.log"
+
+from brief import applog, version  # noqa: E402
 from brief.window import kokoro_tts, quiet  # noqa: E402
+
+log = applog.get("dispatch_speak")
 
 BASE_URL = os.environ.get("DISPATCH_URL", "http://localhost:8808")
 POLL_SECONDS = int(os.environ.get("DISPATCH_SPEAK_INTERVAL", "60"))
@@ -57,19 +77,73 @@ PRELOAD_SECONDS = int(os.environ.get("DISPATCH_SPEAK_PRELOAD_SECONDS", "30"))
 # land inside the PRELOAD_SECONDS window every hour without polling alerts
 # any more often than POLL_SECONDS.
 TICK_SECONDS = 10
-# `say` fallback voice — Daniel (en_GB) is a reasonable match for Kokoro's
-# default British voice when Kokoro isn't available. Kept as the safety
-# net, never the primary.
+# `say` fallback voice — Daniel (en_GB) matches the Jarvis British character
+# when Kokoro isn't available. Kept as the safety net, never the primary.
 VOICE = os.environ.get("DISPATCH_VOICE", "Daniel")
 RATE = int(os.environ.get("DISPATCH_VOICE_RATE", "172"))  # wpm; ~175 is default
 MAX_UTTERANCES = 3
 STATE_PATH = ROOT / "data" / "speaker_seen.json"
 MUTE_PATH = ROOT / "data" / "speaker_mute"
-# An external voice agent (if you run one) touches this while it's up and
-# speaking; we defer to it and resume automatically when it goes stale.
-# If you don't run one, this file never exists and the check is always False.
-VOICE_CLAIM_PATH = ROOT / "data" / "voice_claim_external"
+# the voice assistant project touches this while it's up and speaking; we defer to it and
+# resume automatically when it goes stale (JARVIS_VOICE_HANDOFF.md).
+JARVIS_CLAIM_PATH = ROOT / "data" / "voice_claim_jarvis"
+STAMP_PATH = ROOT / "data" / "speaker_stamp.json"
 SEEN_CAP = 500
+
+
+def _utcnow_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def start_stamp(pid: int | None = None) -> dict:
+    """What this process IS: written once at start, before the first poll, so
+    a daemon that hangs on its first poll is still visible. `source_hash` is the
+     fingerprint captured at import (brief.version.STARTED_FP; HS-1) and is
+    what staleness is judged on; `git_sha` is provenance only. None stays None,
+    never a guess."""
+    return {
+        "service": "dispatch-speaker",
+        "pid": pid if pid is not None else os.getpid(),
+        "started_at": _utcnow_iso(),
+        "version": version.VERSION,
+        "source_hash": version.STARTED_FP,
+        "runtime_roots": [
+            str(r) for r in (*version.RUNTIME_ROOTS, *version.RUNTIME_FILES)
+        ],
+        "editable_roots": [str(r) for r in version.EDITABLE_ROOTS],
+        "git_sha": version.GIT_SHA,
+        "python": sys.executable,
+        "python_version": sys.version.split()[0],
+        "sqlite_version": sqlite3.sqlite_version,
+        "poll_seconds": POLL_SECONDS,
+        "polls": 0,
+        "last_poll_at": None,
+        "last_poll_ok": None,
+        "last_error": None,
+    }
+
+
+def write_stamp(stamp: dict, path: Path | None = None) -> None:
+    """Atomic replace, so a reader never sees half a file. Best-effort: a stamp
+    that cannot be written is logged and must never stop the voice."""
+    target = path or STAMP_PATH
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_text(json.dumps(stamp, indent=1), encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError as exc:
+        log.error("speaker stamp write FAILED (%r)", exc)
+
+
+def record_poll(stamp: dict, ok: bool, error: str | None = None) -> dict:
+    """The heartbeat: every poll, success or failure, moves last_poll_at, so a
+    reader can tell a live daemon from a hung one with a live pid."""
+    stamp["polls"] = int(stamp.get("polls") or 0) + 1
+    stamp["last_poll_at"] = _utcnow_iso()
+    stamp["last_poll_ok"] = ok
+    stamp["last_error"] = error
+    return stamp
 
 
 def load_state() -> tuple[list[str], datetime | None, list[dict]]:
@@ -122,7 +196,7 @@ def _quiet_hours() -> tuple[int, int, bool, bool, bool, float]:
     window.yaml (one source of truth, shared with /api/voice). Default
     17->9, weekdays-only, calendar-check on = speaks only 09:00-17:00
     Mon-Fri and not during a calendar meeting. Display-idle defaults ON,
-    20 min (the user, 2026-08-04: "I don't need to hear odd voices from the
+    20 min (the operator, 2026-08-04: "I don't need to hear odd voices from the
     basement" — only this scheduled path opts in, never the manual button;
     see quiet.quiet_reason's respect_display_idle docstring)."""
     try:
@@ -162,13 +236,13 @@ def _lead_in(slot: datetime, n: int) -> str:
 # Which of a bulletin's pending items get read (top MAX_UTTERANCES) vs.
 # collapsed into "plus N more" -- ranked by kind first (convergence is "the
 # deepest intel upgrade", world events "always qualify" at high severity,
-# watchlist is "your own beat" -- news/surge are broader-carried but less
+# watchlist is "his own beat" -- news/surge are broader-carried but less
 # targeted), then within a kind by that kind's own magnitude metric.
 _KIND_RANK = {"convergence": 0, "world": 1, "watchlist": 2, "news": 3, "surge": 4}
 
-# Alert kinds that never earn an unprompted bulletin. Env-overridable as a
-# comma list -- if you run an external voice agent with its own equivalent
-# setting, matching the two keeps both halves of an optional handoff
+# Alert kinds that never earn an unprompted bulletin (the operator, 2026-07-31).
+# Env-overridable as a comma list, matching the voice assistant project's
+# JARVIS_DISPATCH_SILENT_KINDS so the two halves of the voice handoff are
 # configured the same way; empty string restores the old speak-everything
 # behaviour. Kept as a function, not a module constant, so the env var can be
 # changed and the service restarted without a code edit.
@@ -176,7 +250,7 @@ _DEFAULT_SILENT_KINDS = "news,surge"
 
 
 def _silent_kinds() -> frozenset:
-    raw = os.environ.get("DISPATCH_SILENT_KINDS", _DEFAULT_SILENT_KINDS)
+    raw = os.environ.get("JARVIS_DISPATCH_SILENT_KINDS", _DEFAULT_SILENT_KINDS)
     return frozenset(k.strip().lower() for k in raw.split(",") if k.strip())
 
 
@@ -254,7 +328,7 @@ def maybe_prerender(
 
 def _voice_engine() -> tuple[str, str, str, float]:
     """(engine, kokoro voice, kokoro lang, kokoro speed) from window.yaml.
-    engine "kokoro" uses the local neural voice; anything else (or a
+    engine "kokoro" uses the local Jarvis neural voice; anything else (or a
     missing model) uses macOS `say`. Read live so a config change lands without
     a code edit."""
     try:
@@ -272,7 +346,7 @@ def _voice_engine() -> tuple[str, str, str, float]:
 
 
 def speak(text: str) -> None:
-    """Say `text` aloud. Prefers the local neural voice (Kokoro); falls
+    """Say `text` aloud. Prefers the Jarvis neural voice (Kokoro, local); falls
     back to macOS `say` if Kokoro is disabled, unavailable, or errors — so the
     wall is never silenced by a voice problem. Thin wrapper over
     kokoro_tts.speak_or_say, the ONE fallback code path shared with the
@@ -324,23 +398,22 @@ def run_once(
         if not aid or aid in seen_set or aid in pending_ids:
             continue
         if (a.get("kind") or "").lower() in _silent_kinds():
-            # the user, 2026-07-31: "only read news when I ask." The board mixes
-            # things that concern YOU (a delivery, a calendar collision) with
+            # the operator, 2026-07-31: "only read news when I ask." The board mixes
+            # things that concern HIM (a delivery, a calendar collision) with
             # OSINT digest items -- kinds "news" and "surge" ("Coverage surge:
             # Morocco -- 4 stories in the last hour"). Only the former earns an
             # unprompted bulletin at :00/:30.
             #
-            # This speaker is one half of an optional handoff -- it reads the
-            # board whenever an external voice agent (if you run one, see
-            # quiet.external_agent_has_voice) isn't holding the claim file. Getting this
-            # right matters: fixing only one side would silence news exactly when
-            # the other agent is running, or leave both talking over each other
-            # when it isn't -- the harder bug to notice and the more annoying one
-            # to live with.
+            # The same rule landed in the voice assistant project's dispatch_voice.plan_utterances
+            # the same day, and this speaker is the OTHER half of that handoff -- it
+            # reads the board whenever the Jarvis agent isn't holding the claim file.
+            # Fixing only one side would have silenced news exactly when Jarvis was
+            # running and left it talking whenever he wasn't, which is the harder
+            # bug to notice and the more annoying one to live with.
             #
             # Marked seen, not left pending: news must never accumulate into a
             # later bulletin. The board still shows it, and the on-demand "read the
-            # news" button is untouched.
+            # news" button and Jarvis's news tools are untouched.
             newly_seen.append(aid)
         elif a.get("speak_worthy"):
             # Capture it NOW (id + speak text + the fields _importance() needs
@@ -375,7 +448,7 @@ def run_once(
             MUTE_PATH,
             qs,
             qe,
-            voice_claim_path=VOICE_CLAIM_PATH,
+            jarvis_claim_path=JARVIS_CLAIM_PATH,
             weekdays_only=wd,
             respect_calendar=check_cal,
             respect_display_idle=check_idle,
@@ -383,7 +456,7 @@ def run_once(
         )
         if reason:
             # Skip this bulletin rather than stacking it — board still shows all.
-            print(f"  bulletin skipped — {reason} ({len(pending)} item(s))")
+            log.info("bulletin skipped — %s (%d item(s))", reason, len(pending))
         else:
             # Same helper the pre-render step used, so a cached clip lines up
             # with what's actually said (and the 3 read aloud are the most
@@ -399,6 +472,16 @@ def run_once(
 
 
 def main() -> None:
+    stamp = start_stamp()
+    write_stamp(stamp)
+    log.info(
+        "speaker started pid=%s version=%s source_hash=%s git_sha=%s python=%s",
+        stamp["pid"],
+        stamp["version"],
+        stamp["source_hash"],
+        stamp["git_sha"],
+        stamp["python_version"],
+    )
     seen, last_slot, pending = load_state()
     first_run = not STATE_PATH.exists()
     prerendered_for: datetime | None = None
@@ -418,13 +501,15 @@ def main() -> None:
                     # leftover prerendered clips (unclaimed or now-stale).
                     kokoro_tts.clear_prerendered()
                     prerendered_for = None
+                write_stamp(record_poll(stamp, True))
             except Exception as exc:  # noqa: BLE001 — daemon must outlive bad polls
-                print(f"  speak poll FAILED ({exc!r})")
+                log.error("speak poll FAILED (%r)", exc)
+                write_stamp(record_poll(stamp, False, repr(exc)))
             next_fetch = time.monotonic() + POLL_SECONDS
         try:
             prerendered_for = maybe_prerender(datetime.now(), pending, prerendered_for)
         except Exception as exc:  # noqa: BLE001 — never let prerender sink the daemon
-            print(f"  prerender FAILED ({exc!r})")
+            log.error("prerender FAILED (%r)", exc)
         time.sleep(TICK_SECONDS)
 
 

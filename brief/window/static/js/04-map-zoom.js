@@ -1,7 +1,7 @@
 // 04-map-zoom.js — COP zoom & pan (viewBox drive, wheel/drag/dblclick, zoom buttons)
 
 // --- COP zoom & pan ---------------------------------------------------------
-// Drive the map's viewBox so the user can zoom into a hot region (Middle East,
+// Drive the map's viewBox so the operator can zoom into a hot region (Middle East,
 // East Asia) to read a dense cluster, then reset to the world. Everything is
 // drawn in this 720x278 space, so zooming the viewBox scales pins, land and
 // labels together — no per-layer maths. getScreenCTM handles the

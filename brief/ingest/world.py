@@ -4,7 +4,7 @@ gives "the number changed / a new marker appeared": each adapter reports the
 emit a normal Item per significant change. Those Items flow through the
 existing dedupe -> score -> generate -> store -> deliver spine untouched.
 
-Design, Phase 1):
+Design (see WORLD_DELTA_BUILD_PLAN.md, Phase 1):
   - An adapter is `fetch_state(feed: dict) -> list[dict]`, returning current
     records. Each record has a stable `key`, a `value` (the string the delta
     hash is computed over), and optional `title`/`url`/`raw_text`/`lat`/`lon`/
@@ -200,7 +200,10 @@ def _parse_sdn_csv(text: str) -> list[dict]:
     for row in reader:
         if len(row) < len(_SDN_COLUMNS):
             continue  # malformed/trailing row (e.g. a stray blank line)
-        fields = dict(zip(_SDN_COLUMNS, (_sdn_clean(v) for v in row)))
+        # strict=False is the intent, not an oversight: short rows are already
+        # skipped by the guard above, so the only truncation left is a row with
+        # trailing fields past the columns we map.
+        fields = dict(zip(_SDN_COLUMNS, (_sdn_clean(v) for v in row), strict=False))
         ent_num = fields["ent_num"]
         if not ent_num:
             continue
@@ -305,7 +308,10 @@ def _parse_opensky_states(data: dict) -> list[dict]:
                 "key": icao24,
                 # position/velocity/on_ground in the value: movement registers as
                 # "changed" even when the callsign stays the same.
-                "value": f"callsign={callsign}|lat={lat}|lon={lon}|on_ground={on_ground}|velocity={velocity}",
+                # noqa E501, not reflowed: this string IS the change-detection
+                # key -- a stray space introduced by wrapping it would make
+                # every aircraft read as "changed" on the next sweep.
+                "value": f"callsign={callsign}|lat={lat}|lon={lon}|on_ground={on_ground}|velocity={velocity}",  # noqa: E501
                 "title": f"Aircraft {label} in watch-box",
                 "url": f"https://opensky-network.org/aircraft-profile?icao24={icao24}",
                 "raw_text": f"{label} ({icao24}) at {lat},{lon}, "
@@ -411,7 +417,8 @@ def _value_hash(value: str) -> str:
 
 def _load_snapshot(con: sqlite3.Connection, feed_name: str) -> dict[str, dict]:
     rows = con.execute(
-        "SELECT record_key, value_hash, payload FROM feed_snapshots WHERE feed_name = ?",
+        "SELECT record_key, value_hash, payload FROM feed_snapshots "
+        "WHERE feed_name = ?",
         (feed_name,),
     ).fetchall()
     out = {}
@@ -432,7 +439,8 @@ def _write_snapshot(
     payload: dict,
 ) -> None:
     con.execute(
-        "INSERT OR REPLACE INTO feed_snapshots (feed_name, record_key, value_hash, payload) "
+        "INSERT OR REPLACE INTO feed_snapshots "
+        "(feed_name, record_key, value_hash, payload) "
         "VALUES (?, ?, ?, ?)",
         (feed_name, record_key, value_hash, json.dumps(payload)),
     )
@@ -544,7 +552,8 @@ def fetch_all(
     function's core diff/log behavior changing at all for existing callers
     (the daily pipeline, the Phase 1/2 tests) that don't pass it.
 
-    `current` is likewise optional and additive (v2 — see: when a caller passes a list,
+    `current` is likewise optional and additive (v2 — see
+    WORLD_DELTA_BUILD_PLAN.md's "v2" section): when a caller passes a list,
     one dict per feed (`name`, `records`) is appended, where `records` is
     that feed's full current state (the same min_severity floor diff_feed
     already applies), trimmed to `{key,title,lat,lon,severity,url}`. This is
@@ -587,9 +596,7 @@ def fetch_all(
             )
         try:
             deltas = diff_feed(con, feed, records)
-        except (
-            Exception
-        ) as exc:  # noqa: BLE001 — same fail-soft contract for the diff step
+        except Exception as exc:  # noqa: BLE001 — same fail-soft contract for the diff step
             log.error("%s: diff FAILED (%r)", name, exc)
             if stats is not None:
                 stats.append(

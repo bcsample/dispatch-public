@@ -1,9 +1,10 @@
 """Run an on-demand deep-dive brief:  python -m brief  (generate + print + save).
 
 Never scheduled, never emails: the Apps Script Morning Digest owns daily delivery
-(README § Dispatch Integration, Fable ADR 2026-07-16)."""
+(README § Dispatch Integration, architecture review ADR 2026-07-16)."""
 
 import sys
+
 from . import pipeline
 
 if __name__ == "__main__":
@@ -17,5 +18,6 @@ if __name__ == "__main__":
     print(result["text"])
     print("=" * 70)
     print(
-        f"\nsaved: {result['path']}  ({result['selected']} items from {result['raw']} fetched)"
+        f"\nsaved: {result['path']}  "
+        f"({result['selected']} items from {result['raw']} fetched)"
     )

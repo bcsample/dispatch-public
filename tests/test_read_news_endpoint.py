@@ -1,5 +1,5 @@
 """POST /api/voice/read_news — the board's on-demand "read the news" button
-(the user: a small voice orb they click at their desk). Speaking runs in a
+(the operator: a small Jarvis orb he clicks at his desk). Speaking runs in a
 background thread; these tests replace threading.Thread with a synchronous
 stand-in so the speak call happens deterministically within the test."""
 
@@ -33,10 +33,27 @@ def _iso(minutes_ago: float) -> str:
     )
 
 
+class _FixedDatetime(datetime):
+    """Stand-in for the datetime CLASS imported into app_module -- real
+    datetime.datetime can't have .now monkeypatched directly (immutable
+    C type), but the NAME `datetime` in app_module's namespace can be
+    rebound to this instead. Injects a fixed clock so these tests don't
+    flake depending on what time it actually is when they run (real
+    incident: failed every morning inside the default 23:00-08:00 quiet
+    window, since the endpoint calls the real wall clock)."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return datetime(
+            2026, 7, 20, 12, 0, tzinfo=tz
+        )  # noon -- outside any quiet window
+
+
 def _client(monkeypatch, *, mic_in_use=False):
     monkeypatch.setattr(quiet, "mic_in_use", lambda: mic_in_use)
     monkeypatch.setattr(quiet, "focus_active", lambda path=None: False)
     monkeypatch.setattr(app_module.threading, "Thread", _SyncThread)
+    monkeypatch.setattr(app_module, "datetime", _FixedDatetime)
     app = create_app(world_feeds=[], window_cfg={}, news_sources=[])
     return app, TestClient(app)
 
@@ -58,9 +75,9 @@ def test_blocks_in_a_meeting_and_never_speaks(monkeypatch):
 
 
 def test_calendar_meeting_does_not_block_a_manual_click(monkeypatch):
-    # the user, 2026-07-21: "I'm OK with a calendar hold, but if I click the
+    # the operator, 2026-07-21: "I'm OK with a calendar hold, but if I click the
     # button manually.. I'd like it to read the news." A calendar hold is a
-    # PREDICTION you're busy, not evidence you actually are -- unlike mute/mic-
+    # PREDICTION he's busy, not evidence he actually is -- unlike mute/mic-
     # in-use, an explicit click outweighs it. Real incident: a self-organized
     # calendar block outlasted the actual (already-ended) call and silently
     # blocked the button.
@@ -100,7 +117,7 @@ def test_calendar_meeting_still_gates_the_scheduled_style_voice_check(monkeypatc
 
 def test_manual_mute_blocks_the_button_no_exceptions(monkeypatch, tmp_path):
     # REGRESSION (live incident, 2026-07-21): an earlier version let this
-    # endpoint override manual mute ("he clicked, he means it"). the user hit
+    # endpoint override manual mute ("he clicked, he means it"). the operator hit
     # mute mid-call and it spoke anyway. Mute means mute, full stop -- no
     # override for how the speech was triggered.
     from brief.window import service as service_mod
@@ -137,6 +154,7 @@ def test_speaks_the_digest_via_kokoro_with_configured_voice(monkeypatch):
     monkeypatch.setattr(quiet, "mic_in_use", lambda: False)
     monkeypatch.setattr(quiet, "focus_active", lambda path=None: False)
     monkeypatch.setattr(app_module.threading, "Thread", _SyncThread)
+    monkeypatch.setattr(app_module, "datetime", _FixedDatetime)
     app = create_app(
         world_feeds=[],
         window_cfg={

@@ -1,10 +1,10 @@
-// 09-voice-main.js — voice orb/mute/read-news buttons + main poll loop bootstrap
+// 09-voice-main.js — Jarvis orb/mute/read-news buttons + main poll loop bootstrap
 
-// The voice orb: idle breath when the voice is live, fast bright pulse when
+// The Jarvis orb: idle breath when the voice is live, fast bright pulse when
 // something speak-worthy is pending, dimmed + struck through when it can't
 // speak (meeting / Focus / muted / quiet hours) — with the reason on hover.
 function renderOrb(voice, alerts) {
-  const orb = document.getElementById("voiceOrb");
+  const orb = document.getElementById("jarvisOrb");
   const btn = document.getElementById("readNewsBtn");
   const label = document.getElementById("voiceLabel");
   if (!orb) return;
@@ -14,8 +14,8 @@ function renderOrb(voice, alerts) {
   orb.classList.toggle("speaking", canSpeak && pending > 0);
   const reason = voice && voice.reason;
   const tooltip = (canSpeak
-    ? (pending ? `Voice — ${pending} to announce` : "Voice — listening")
-    : `Voice — quiet (${reason})`) + " · click to read the news now";
+    ? (pending ? `Jarvis — ${pending} to announce` : "Jarvis — listening")
+    : `Jarvis — quiet (${reason})`) + " · click to read the news now";
   if (btn) btn.title = tooltip;
   if (label) {
     label.textContent = canSpeak ? (pending ? `${pending} to announce` : "voice live") : reason;
@@ -57,7 +57,7 @@ function renderMuteButton(voice) {
 
 // Click "Read news" -> read the news/headlines RIGHT NOW (on-demand,
 // server-side reuses the same "one news brain" digest the scheduled bulletin
-// and any external voice-agent tool integration reads from). Local only -- no external calls,
+// and Jarvis's own get_news tool read from). Local only -- no external calls,
 // speaks through this machine's speakers. Only blocked by mute/meeting/quiet
 // hours -- the exact same gate as the scheduled bulletin.
 (function bindReadNewsButton() {

@@ -1,6 +1,6 @@
-"""Tests for brief.modelroles — optional model-role resolution against a
-local registry service. Entirely optional: with no registry configured or
-reachable, every call falls back to the caller's own hardcoded default."""
+"""Tests for brief.modelroles (Helm 2c: the host monitor model-role resolution).
+Ported from the voice assistant project's test_modelroles.py — same contract, same
+fail-soft guarantees, env var names adapted to this repo (BRIEF_ENGINEROOM_*)."""
 
 from __future__ import annotations
 
@@ -23,12 +23,14 @@ def _clear_cache():
 def _fake_urlopen_returning(payload: dict):
     def _fake(req, timeout=None):
         return io.BytesIO(json.dumps(payload).encode())
+
     return _fake
 
 
-def test_resolve_returns_registry_model_on_success(monkeypatch):
+def test_resolve_returns_engine_room_model_on_success(monkeypatch):
     monkeypatch.setattr(
-        modelroles.urllib.request, "urlopen",
+        modelroles.urllib.request,
+        "urlopen",
         _fake_urlopen_returning({"role": "chat.small", "model": "qwen3.5:9b"}),
     )
     assert modelroles.resolve("chat.small", "fallback-default") == "qwen3.5:9b"
@@ -52,7 +54,8 @@ def test_resolve_falls_back_on_malformed_json(monkeypatch):
 
 def test_resolve_falls_back_when_model_field_missing(monkeypatch):
     monkeypatch.setattr(
-        modelroles.urllib.request, "urlopen",
+        modelroles.urllib.request,
+        "urlopen",
         _fake_urlopen_returning({"role": "chat.small"}),
     )
     assert modelroles.resolve("chat.small", "fallback-default") == "fallback-default"
@@ -72,9 +75,8 @@ def test_resolve_caches_success_no_second_network_call(monkeypatch):
 
 
 def test_resolve_caches_fallback_too_no_repeated_timeouts(monkeypatch):
-    # The hard rule: an unreachable/unconfigured registry must never cost
-    # every subsequent call another network round-trip -- the fallback
-    # itself gets cached.
+    # The hard rule: the host monitor being down must never cost every subsequent
+    # call another network round-trip -- the fallback itself gets cached.
     calls = {"n": 0}
 
     def _raise(req, timeout=None):
@@ -120,7 +122,6 @@ def test_base_url_overridable_via_env(monkeypatch):
     assert modelroles._base_url() == "http://example.test:9999"
 
 
-def test_base_url_defaults_to_localhost(monkeypatch):
+def test_base_url_defaults_to_engine_room_tailnet_address(monkeypatch):
     monkeypatch.delenv("BRIEF_ENGINEROOM_URL", raising=False)
     assert modelroles._base_url() == modelroles._BASE_URL_DEFAULT
-    assert "localhost" in modelroles._BASE_URL_DEFAULT
