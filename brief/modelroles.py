@@ -23,18 +23,18 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-_BASE_URL_DEFAULT = "http://100.115.16.42:7870"
+_BASE_URL_DEFAULT = "http://127.0.0.1:7870"
 _API_KEY_FILE_DEFAULT = "/PATH/TO/the render host/api_key.token"
 
 _cache: dict[str, str] = {}
 
 
 def _base_url() -> str:
-    return os.environ.get("BRIEF_ENGINEROOM_URL", _BASE_URL_DEFAULT).rstrip("/")
+    return os.environ.get("BRIEF_HOSTMONITOR_URL", _BASE_URL_DEFAULT).rstrip("/")
 
 
 def _api_key() -> str | None:
-    path = os.environ.get("BRIEF_ENGINEROOM_KEY_FILE", _API_KEY_FILE_DEFAULT)
+    path = os.environ.get("BRIEF_HOSTMONITOR_KEY_FILE", _API_KEY_FILE_DEFAULT)
     try:
         key = Path(path).read_text(encoding="utf-8").strip()
         return key or None

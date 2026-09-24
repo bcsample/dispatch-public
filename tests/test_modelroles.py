@@ -1,6 +1,6 @@
 """Tests for brief.modelroles (Helm 2c: the host monitor model-role resolution).
 Ported from the voice assistant project's test_modelroles.py — same contract, same
-fail-soft guarantees, env var names adapted to this repo (BRIEF_ENGINEROOM_*)."""
+fail-soft guarantees, env var names adapted to this repo (BRIEF_HOSTMONITOR_*)."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def _fake_urlopen_returning(payload: dict):
     return _fake
 
 
-def test_resolve_returns_engine_room_model_on_success(monkeypatch):
+def test_resolve_returns_host_monitor_model_on_success(monkeypatch):
     monkeypatch.setattr(
         modelroles.urllib.request,
         "urlopen",
@@ -92,7 +92,7 @@ def test_resolve_caches_fallback_too_no_repeated_timeouts(monkeypatch):
 def test_resolve_sends_bearer_token_when_key_file_present(tmp_path, monkeypatch):
     key_file = tmp_path / "key.token"
     key_file.write_text("secret-key-123\n")
-    monkeypatch.setenv("BRIEF_ENGINEROOM_KEY_FILE", str(key_file))
+    monkeypatch.setenv("BRIEF_HOSTMONITOR_KEY_FILE", str(key_file))
     captured = {}
 
     def _fake(req, timeout=None):
@@ -105,7 +105,7 @@ def test_resolve_sends_bearer_token_when_key_file_present(tmp_path, monkeypatch)
 
 
 def test_resolve_no_auth_header_when_key_file_missing(monkeypatch):
-    monkeypatch.setenv("BRIEF_ENGINEROOM_KEY_FILE", "/nonexistent/path")
+    monkeypatch.setenv("BRIEF_HOSTMONITOR_KEY_FILE", "/nonexistent/path")
     captured = {}
 
     def _fake(req, timeout=None):
@@ -118,10 +118,10 @@ def test_resolve_no_auth_header_when_key_file_missing(monkeypatch):
 
 
 def test_base_url_overridable_via_env(monkeypatch):
-    monkeypatch.setenv("BRIEF_ENGINEROOM_URL", "http://example.test:9999/")
+    monkeypatch.setenv("BRIEF_HOSTMONITOR_URL", "http://example.test:9999/")
     assert modelroles._base_url() == "http://example.test:9999"
 
 
-def test_base_url_defaults_to_engine_room_tailnet_address(monkeypatch):
-    monkeypatch.delenv("BRIEF_ENGINEROOM_URL", raising=False)
+def test_base_url_defaults_to_host_monitor_private_network_address(monkeypatch):
+    monkeypatch.delenv("BRIEF_HOSTMONITOR_URL", raising=False)
     assert modelroles._base_url() == modelroles._BASE_URL_DEFAULT

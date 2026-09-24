@@ -48,6 +48,6 @@ def test_entry_point_binds_exactly_the_configured_host(monkeypatch):
     entry.main()
     assert captured["host"] == "127.0.0.1"
 
-    monkeypatch.setenv("DISPATCH_BIND_HOST", "100.115.16.42")
+    monkeypatch.setenv("DISPATCH_BIND_HOST", "127.0.0.1")
     entry.main()
-    assert captured["host"] == "100.115.16.42"
+    assert captured["host"] == "127.0.0.1"

@@ -40,7 +40,7 @@ exists yet, so consent has never been granted, is_in_meeting_now() raises, and
 the board behaves exactly as if this signal did not exist.
 
 THE NEXT STEP, and it is the operator's alone: this client lives in the Google Cloud
-project `bionic-comfort-407714` (NOT the project Jarvis's client uses), whose
+project `your-gcp-project-id` (NOT the project Jarvis's client uses), whose
 OAuth consent screen is in Testing mode with his account not added as a test
 user. He hit the Google-side error mid-flow on 2026-08-16 and said to hold. Add
 BOTH accounts under Test users at

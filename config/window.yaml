@@ -5,7 +5,7 @@ sweep_interval_seconds: 900   # how often the sweep loop calls world.fetch_all()
 port: 8808                    # suggested v1 port (nothing else in the house uses it)
 # Loopback + `a private-network proxy --https=8808`, never 0.0.0.0 (architecture review /
 # #539, 2026-08-16: Dispatch was the ONLY project service bound to every
-# interface -- LAN-readable, not just private network-readable, for a daily intel
+# interface -- LAN-readable, not just private_network-readable, for a daily intel
 # brief). DISPATCH_BIND_HOST env var is the typed-out escape hatch.
 host: 127.0.0.1
 recent_deltas_limit: 200      # how many recent world Items the board/map fetch per poll
